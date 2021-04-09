@@ -131,12 +131,13 @@ class BlockchainTest(BitcoinTestFramework):
             'csv': {'type': 'buried', 'active': False, 'height': 432},
             'segwit': {'type': 'buried', 'active': True, 'height': 0},
             'testdummy': {
-                'type': 'bip9',
-                'bip9': {
+                'type': 'bip8',
+                'bip8': {
                     'status': 'started',
                     'bit': 28,
-                    'start_time': 0,
-                    'timeout': 0x7fffffffffffffff,  # testdummy does not have a timeout so is set to the max int64 value
+                    'startheight': 144,
+                    'timeoutheight': 0x7fffffff,  # testdummy does not have a timeout so is set to the max int value
+                    'minimum_activation_height': 0,
                     'since': 144,
                     'statistics': {
                         'period': 144,
@@ -149,11 +150,12 @@ class BlockchainTest(BitcoinTestFramework):
                 'active': False
             },
             'taproot': {
-                'type': 'bip9',
-                'bip9': {
+                'type': 'bip8',
+                'bip8': {
                     'status': 'active',
-                    'start_time': -1,
-                    'timeout': 9223372036854775807,
+                    'startheight': -1,
+                    'timeoutheight': 0x7fffffff,
+                    'minimum_activation_height': 0,
                     'since': 0
                 },
                 'height': 0,
