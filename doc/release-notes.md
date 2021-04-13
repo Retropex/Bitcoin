@@ -1,3 +1,85 @@
+0.21.0+taproot0.1 Release Notes
+===============================
+
+Bitcoin Core 0.21.0-based Taproot Client 0.1 is now available from:
+
+  <https://github.com/BitcoinActivation/bitcoin/releases/tag/v0.21.0+taproot0.1>
+
+This release includes Taproot activation parameters.
+
+How to Upgrade
+==============
+
+If you are running an older version, shut it down. Wait until it has completely
+shut down (which might take a few minutes in some cases), then run the
+installer (on Windows) or just copy over `/Applications/Bitcoin-Qt` (on Mac)
+or `bitcoind`/`bitcoin-qt` (on Linux).
+
+Upgrading directly from a version of Bitcoin Core that has reached its EOL is
+possible, but it might take some time if the data directory needs to be migrated. Old
+wallet versions of Bitcoin Core are generally supported.
+
+Compatibility
+==============
+
+Bitcoin Core is supported and extensively tested on operating systems
+using the Linux kernel, macOS 10.12+, and Windows 7 and newer.  Bitcoin
+Core should also work on most other Unix-like systems but is not as
+frequently tested on them.  It is not recommended to use Bitcoin Core on
+unsupported systems.
+
+From Bitcoin Core 0.20.0 onwards, macOS versions earlier than 10.12 are no
+longer supported. Additionally, Bitcoin Core does not yet change appearance
+when macOS "dark mode" is activated.
+
+
+Notable changes
+===============
+
+Taproot soft fork
+
+When activated, the Taproot softfork will enable much more scalable and private construction of smart contracts as well as the use of Schnorr signatures. This comes with immediate benefits to many users, as well as lays the groundwork for more improvements to come building on top of the new functionality it will make available. Here is a non-comprehensive list of some of that potential new functionality.
+
+- Node validation costs: Schnorr signatures are able to be validated in batches. This will bring down the validation costs of node operators the more schnorr is adopted by transacting users.
+
+- Multisig: Schnorr allows the construction of multi-signature addresses that are indistinguishable from a normal single signature address. This will allow Lightning Network developers to enable more private and efficient use of the Bitcoin blockchain for channel openings and closures. It will also improve the on chain privacy of multisig users after the implementation of safe threshold multi-signatures using schnorr. As well, multisig users will wind up saving a lot on fees due to smaller scripts and producing only a single signature to validate.
+
+- MAST(Merkelized Abstract Syntax Tree): It is currently possible to create a Bitcoin UTXO that can be spent in multiple different ways; the downside to this however is that makes the script larger and the UTXO more expensive to spend. The more ways to spend the UTXO, the larger the script, the larger the fee. MAST is an old proposal to make this more cost effective and private. It works by creating a merkle tree of the different spending conditions, with each condition in it's own leaf at the edge, and requires only providing the spending condition that is used with its associated merkle proof. It allows a UTXO to be locked to multiple spending conditions without requiring all of them to be revealed at the time of spending, which saves fees for blockchain space and comes with privacy benefits. Taproot implements MAST by taking advantage of some of the mathematical benefits of Schnorr, i.e. "tweaking" a schnorr public key with the merkle root of a MAST tree, to produce a new public key. Because of how schnorr works, "tweaking" the matching private key would create a new private key corresponding to the tweaked public key. With this new change to MAST when the UTXO is spent with the tweaked private key no one will even be able to tell a MAST tree existed by watching the blockchain. 
+
+- Privacy: The above functionalities, especially how they can be utilized by different wallet and protocol developers, lay a lot of groundwork for a general improvement in how privately users interact with the Bitcoin network. Some of these improvements will happen passively just through the use of schnorr addresses, some of them will require the use of special tools to benefit from, but overall this soft fork will expand the possibilities for private use of the Bitcoin blockchain. 
+
+
+P2P and network changes
+------------------------
+
+- Taproot activation parameters: At blockheight 681408 (2021 Apr 29) a BIP 8 signaling period will begin with signal bit 2 and an activation threshold of 90% (1815/2016 blocks in a difficulty period) with LOT=true. The minimum activation height is set to block 709632 (2021 Nov 11),  with a timeout height of 760032 (2022 Oct 27). The latest activation height is block 762048 (2022 Nov 10). 
+
+Updated RPCs
+------------
+
+- getblockchaininfo has replaced all references in returned data to BIP9 with BIP8.
+
+0.21.0+taproot0.1 change log
+============================
+
+https://github.com/BitcoinActivation/bitcoin/pulls?q=is%3Apr+is%3Amerged
+
+### Consensus
+- BA#6 Implement BIP 8 based Speedy Trial activation (achow101, ajtowns, luke-jr, Sjors)
+- BA#7 Add BIP 8 lockinontimeout flag and MUST_SIGNAL phase for versionbits (ajtowns, luke-jr)
+- BA#9 chainparams: Set taproot activation parameters
+
+### Tests and QA
+- BA#2 test: Additional (refactored) BIP9 tests (ajtowns, Sjors)
+- BA#4 tests: Add fuzzing harness for versionbits (ajtowns, MarcoFalke)
+- BA#5 fuzz: cleanups for versionbits fuzzer (ajtowns) 
+
+### Miscellaneous
+- BA#8 Branding for Bitcoin Core with Taproot (BitcoinMechanic, luke-jr)
+
+This client was based on Bitcoin Core 0.21.0. The above release notes cover only the changes from that Core release. All major changes in Bitcoin Core 0.21.0 also present in this client are detailed below in the official 0.21.0 Release Notes.
+
+
 0.21.0 Release Notes
 ====================
 
