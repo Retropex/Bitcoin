@@ -1,5 +1,5 @@
 0.21.0+taproot0.1 Release Notes
-=========================
+===============================
 
 Bitcoin Core version 0.21.0-based Taproot Client 0.1 is now available from:
 
@@ -60,7 +60,7 @@ Updated RPCs
 - getblockchaininfo has replaced all references in returned data to BIP9 with BIP8.
 
 0.21.0+taproot0.1 change log
-======================
+============================
 
 https://github.com/BitcoinActivation/bitcoin/pulls?q=is%3Apr+is%3Amerged
 
