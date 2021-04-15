@@ -3,7 +3,7 @@
 
 Bitcoin Core 0.21.0-based Taproot Client 0.1 is now available from:
 
-  <https://github.com/BitcoinActivation/bitcoin/releases/tag/v0.21.0+taproot0.1>
+  <https://github.com/BitcoinActivation/bitcoin/releases/tag/v0.21.0-taproot0.1>
 
 This release includes Taproot activation parameters.
 
