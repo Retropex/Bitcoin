@@ -20,7 +20,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <string>
+#include <utility>
 #include <vector>
+
+class CTxIn;
 
 // Maximum number of bytes pushable to the stack
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 520;
@@ -562,6 +565,8 @@ public:
         shrink_to_fit();
     }
 };
+
+std::pair<CScript, unsigned int> GetScriptForTransactionInput(CScript prevScript, const CTxIn&);
 
 struct CScriptWitness
 {

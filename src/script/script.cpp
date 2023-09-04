@@ -5,10 +5,14 @@
 
 #include <script/script.h>
 
+#include <consensus/consensus.h>
 #include <hash.h>
+#include <primitives/transaction.h>
+#include <script/interpreter.h>
 #include <util/strencodings.h>
 
 #include <string>
+#include <utility>
 
 CScriptID::CScriptID(const CScript& in) : BaseHash(Hash160(in)) {}
 
@@ -325,6 +329,49 @@ size_t CScript::DatacarrierBytes() const
         }
     }
     return counted;
+}
+
+std::pair<CScript, unsigned int> GetScriptForTransactionInput(CScript prevScript, const CTxIn& txin)
+{
+    bool p2sh = false;
+    if (prevScript.IsPayToScriptHash()) {
+        std::vector <std::vector<unsigned char> > stack;
+        if (!EvalScript(stack, txin.scriptSig, SCRIPT_VERIFY_NONE, BaseSignatureChecker(), SigVersion::BASE)) {
+            return std::make_pair(CScript(), 0);
+        }
+        if (stack.empty()) {
+            return std::make_pair(CScript(), 0);
+        }
+        prevScript = CScript(stack.back().begin(), stack.back().end());
+        p2sh = true;
+    }
+
+    int witnessversion = 0;
+    std::vector<unsigned char> witnessprogram;
+
+    if (!prevScript.IsWitnessProgram(witnessversion, witnessprogram)) {
+        return std::make_pair(prevScript, WITNESS_SCALE_FACTOR);
+    }
+
+    if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
+        auto& script_data = txin.scriptWitness.stack.back();
+        prevScript = CScript(script_data.begin(), script_data.end());
+        return std::make_pair(prevScript, 1);
+    }
+
+    if (witnessversion == 1 && witnessprogram.size() == WITNESS_V1_TAPROOT_SIZE && !p2sh) {
+        Span stack{txin.scriptWitness.stack};
+        if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+            SpanPopBack(stack);
+        }
+        if (stack.size() >= 2) {
+            SpanPopBack(stack);  // Ignore control block
+            prevScript = CScript(stack.back().begin(), stack.back().end());
+            return std::make_pair(prevScript, 1);
+        }
+    }
+
+    return std::make_pair(CScript(), 0);
 }
 
 bool GetScriptOp(CScriptBase::const_iterator& pc, CScriptBase::const_iterator end, opcodetype& opcodeRet, std::vector<unsigned char>* pvchRet)
