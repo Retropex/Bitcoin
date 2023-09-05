@@ -306,3 +306,19 @@ int64_t GetVirtualTransactionInputSize(const CTxIn& txin, int64_t nSigOpCost, un
 {
     return GetVirtualTransactionSize(GetTransactionInputWeight(txin), nSigOpCost, bytes_per_sigop);
 }
+
+int32_t DatacarrierBytes(const CTransaction& tx, const CCoinsViewCache& view)
+{
+    int32_t ret{0};
+
+    for (const CTxIn& txin : tx.vin) {
+        const CTxOut &utxo = view.AccessCoin(txin.prevout).out;
+        auto[script, consensus_weight_per_byte] = GetScriptForTransactionInput(utxo.scriptPubKey, txin);
+        ret += script.DatacarrierBytes();
+    }
+    for (const CTxOut& txout : tx.vout) {
+        ret += txout.scriptPubKey.DatacarrierBytes();
+    }
+
+    return ret;
+}
