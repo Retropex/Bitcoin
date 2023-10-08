@@ -1,78 +1,48 @@
-Bitcoin Core integration/staging tree
-=====================================
+Bitcoin Core with ordisrespector patch
+======================================
 
-https://bitcoincore.org
+For more information on what Bitcoin Core is, please refer to the [reference repository](https://github.com/bitcoin/bitcoin)
 
-For an immediately usable, binary version of the Bitcoin Core software, see
-https://bitcoincore.org/en/download/.
+what is a inscription ?
+-----------------------
 
-What is Bitcoin Core?
----------------------
+Inscriptions are the exploit of embedding arbitrary data in the witness of a transaction using the OP_CODE: `OP_IF`,`OP_FALSE`.
 
-Bitcoin Core connects to the Bitcoin peer-to-peer network to download and fully
-validate blocks and transactions. It also includes a wallet and graphical user
-interface, which can be optionally built.
-
-Further information about Bitcoin Core is available in the [doc folder](/doc).
-
-License
--------
-
-Bitcoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for more
-information or see https://opensource.org/licenses/MIT.
-
-Development Process
+What do they allow?
 -------------------
 
-The `master` branch is regularly built (see `doc/build-*.md` for instructions) and tested, but it is not guaranteed to be
-completely stable. [Tags](https://github.com/bitcoin/bitcoin/tags) are created
-regularly from release branches to indicate new official, stable release versions of Bitcoin Core.
+This exploit has been possible since the arrival of SegWit in 2017, at that time the size of a witness was a maximum of 3600 bytes, which would have limited the data included in a inscription, however with the arrival of Taproot the limit has simply been removed, limiting the size of inscription to 4MB (block size).
 
-The https://github.com/bitcoin-core/gui repository is used exclusively for the
-development of the GUI. Its master branch is identical in all monotree
-repositories. Release branches and tags do not exist, so please do not fork
-that repository unless it is for development reasons.
+With the removal of the limit, inscriptions have enough space to carry text, audio, images and even videos.
 
-The contribution workflow is described in [CONTRIBUTING.md](CONTRIBUTING.md)
-and useful hints for developers can be found in [doc/developer-notes.md](doc/developer-notes.md).
+Why is this not desirable?
+--------------------------
 
-Testing
--------
+Firstly, as inscriptions are directly recorded on the chain, ALL nodes in the network must download this data even if the owner of the node does not wish to have this data.
 
-Testing and code review is the bottleneck for development; we get more pull
-requests than we can review and test on short notice. Please be patient and help out by testing
-other people's pull requests, and remember this is a security-critical project where any mistake might cost people
-lots of money.
+Secondly, it makes the chain heavier, thus increasing the IDB (initial blockchain download). A bigger chain means more resources to run a node depriving the people with the least means of running a node and validating the consensus.
 
-### Automated Testing
+Thirdly each inscription creates a UTXOs thus increasing the [UTXOs](https://en.bitcoin.it/wiki/UTXO) set that each node must contain even the pruned nodes.
 
-Developers are strongly encouraged to write [unit tests](src/test/README.md) for new code, and to
-submit new unit tests for old code. Unit tests can be compiled and run
-(assuming they weren't disabled in configure) with: `make check`. Further details on running
-and extending unit tests can be found in [/src/test/README.md](/src/test/README.md).
+Fourth, illegal data can be added to the chain, potentially exposing nodes runner to legal action.
 
-There are also [regression and integration tests](/test), written
-in Python.
-These tests can be run (if the [test dependencies](/test) are installed) with: `test/functional/test_runner.py`
+The total size of inscriptions as well as the UTXOs linked to inscriptions can be consulted on [ordiscan](https://ordiscan.com/).
 
-The CI (Continuous Integration) systems make sure that every pull request is built for Windows, Linux, and macOS,
-and that unit/sanity tests are run automatically.
+It is also possible to consult a [mempool](https://github.com/mempool/mempool) [instance](https://orangepill.ovh) empty of inscription.
 
-### Manual Quality Assurance (QA) Testing
+how to get rid of it?
+---------------------
 
-Changes should be tested by somebody other than the developer who wrote the
-code. This is especially important for large or high-risk changes. It is useful
-to add a test plan to the pull request description if testing the changes is
-not straightforward.
+the simplest way (the one used in this fork) is to standardize these transactions, that is to say that the nodes which execute this patch will simply not relay the inscription, this can only work if a very large number of nodes executing the patch (>90%).
 
-Translations
-------------
+where does this patch come from?
+--------------------------------
 
-Changes to translations as well as new translations can be submitted to
-[Bitcoin Core's Transifex page](https://www.transifex.com/bitcoin/bitcoin/).
+The patch was written by @luke-jr you can see the code alone right here.
+@luke-jr is a long-time developer on bitcoin, feel free to consult the code and these previous works to judge its reliability.
 
-Translations are periodically pulled from Transifex and merged into the git repository. See the
-[translation process](doc/translation_process.md) for details on how this works.
+And then?
+---------
 
-**Important**: We do not accept translation changes as GitHub pull requests because the next
-pull from Transifex would automatically overwrite them again.
+A new patch was also written by @luke-jr and is currently under revision to be merged with Bitcoin Core. You can consult the details and the PR [here](https://github.com/bitcoin/bitcoin/pull/28408).
+Once it has been merged, everyone will be able to use this patch without having to go through alternative clients.
