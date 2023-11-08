@@ -1125,13 +1125,13 @@ bool PeerManagerImpl::IsBlockRequested(const uint256& hash)
 }
 
 bool PeerManagerImpl::IsBlockRequestedFromOutbound(const uint256& hash)
+
 {
     for (auto range = mapBlocksInFlight.equal_range(hash); range.first != range.second; range.first++) {
         auto [nodeid, block_it] = range.first->second;
         CNodeState& nodestate = *Assert(State(nodeid));
         if (!nodestate.m_is_inbound) return true;
     }
-
     return false;
 }
 
