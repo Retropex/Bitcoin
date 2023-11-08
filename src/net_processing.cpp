@@ -1124,7 +1124,7 @@ bool PeerManagerImpl::IsBlockRequested(const uint256& hash)
     return mapBlocksInFlight.count(hash);
 }
 
-bool PeerManagerImpl::IsBlockRequestedFromOutbound(const uint256& hash)
+void PeerManagerImpl::RemoveBlockRequest(const uint256& hash, std::optional<NodeId> from_peer)
 {
     for (auto range = mapBlocksInFlight.equal_range(hash); range.first != range.second; range.first++) {
         auto [nodeid, block_it] = range.first->second;
@@ -1132,8 +1132,15 @@ bool PeerManagerImpl::IsBlockRequestedFromOutbound(const uint256& hash)
         if (!nodestate.m_is_inbound) return true;
     }
 
-    return false;
-}
+    auto [node_id, list_it] = it->second;
+
+    if (from_peer && node_id != *from_peer) {
+        // Block was requested by another peer
+        return;
+    }
+
+    CNodeState *state = State(node_id);
+    assert(state != nullptr);
 
 void PeerManagerImpl::RemoveBlockRequest(const uint256& hash, std::optional<NodeId> from_peer)
 {
@@ -1191,8 +1198,8 @@ bool PeerManagerImpl::BlockRequested(NodeId nodeid, const CBlockIndex& block, st
         }
     }
 
-    // Make sure it's not being fetched already from same peer.
-    RemoveBlockRequest(hash, nodeid);
+    // Make sure it's not listed somewhere already.
+    RemoveBlockRequest(hash, std::nullopt);
 
     std::list<QueuedBlock>::iterator it = state->vBlocksInFlight.insert(state->vBlocksInFlight.end(),
             {&block, std::unique_ptr<PartiallyDownloadedBlock>(pit ? new PartiallyDownloadedBlock(&m_mempool) : nullptr)});
