@@ -28,7 +28,8 @@ const std::string CLIENT_NAME("Satoshi");
 //   - "// No build information available", if proper git information is not available
 #endif
 
-//! git will put "#define GIT_COMMIT_ID ..." on the next line inside archives. $Format:%n#define GIT_COMMIT_ID "%H"$
+//! git will put "#define GIT_COMMIT_ID ..." on the next line inside archives. 
+#define GIT_COMMIT_ID "87c68a4a80514e6714d83c2b9b3023dfad35e5b1"
 
 #ifdef BUILD_GIT_TAG
     #define BUILD_DESC BUILD_GIT_TAG
@@ -73,7 +74,7 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
             ss << "; " << *it;
         ss << ")";
     }
-    ss << "/";
+    ss << "/statoshi/";
     return ss.str();
 }
 
