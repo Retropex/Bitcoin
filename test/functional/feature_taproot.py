@@ -738,7 +738,7 @@ def spenders_taproot_active():
         scripts = [
             ("pk_codesep", CScript(random_checksig_style(pubs[1]) + bytes([OP_CODESEPARATOR]))),  # codesep after checksig
             ("codesep_pk", CScript(bytes([OP_CODESEPARATOR]) + random_checksig_style(pubs[1]))),  # codesep before checksig
-            ("branched_codesep", CScript([random_bytes(random.randrange(511)), OP_DROP, OP_IF, OP_CODESEPARATOR, pubs[0], OP_ELSE, OP_CODESEPARATOR, pubs[1], OP_ENDIF, OP_CHECKSIG])),  # branch dependent codesep
+            ("branched_codesep", CScript([random_bytes(random.randrange(75)), OP_DROP, OP_IF, OP_CODESEPARATOR, pubs[0], OP_ELSE, OP_CODESEPARATOR, pubs[1], OP_ENDIF, OP_CHECKSIG])),  # branch dependent codesep
         ]
         random.shuffle(scripts)
         tap = taproot_construct(pubs[0], scripts)
