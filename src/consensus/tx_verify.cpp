@@ -13,6 +13,10 @@
 #include <script/interpreter.h>
 #include <util/check.h>
 #include <util/moneystr.h>
+#include <statsd_client.h>
+#include <boost/thread.hpp>
+
+statsd::StatsdClient txstatsClient;
 
 bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
 {

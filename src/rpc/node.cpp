@@ -19,9 +19,9 @@
 #include <rpc/util.h>
 #include <scheduler.h>
 #include <univalue.h>
+#include <util/any.h>
 #include <util/check.h>
 #include <util/syscall_sandbox.h>
-#include <util/system.h>
 
 #include <stdint.h>
 #ifdef HAVE_MALLOC_INFO
@@ -163,7 +163,7 @@ static RPCHelpMan getmemoryinfo()
                 {
                     {"mode", RPCArg::Type::STR, RPCArg::Default{"stats"}, "determines what kind of information is returned.\n"
             "  - \"stats\" returns general statistics about memory usage in the daemon.\n"
-            "  - \"mallocinfo\" returns an XML string describing low-level heap state (only available if compiled with glibc 2.10+)."},
+            "  - \"mallocinfo\" returns an XML string describing low-level heap state (only available if compiled with glibc)."},
                 },
                 {
                     RPCResult{"mode \"stats\"",

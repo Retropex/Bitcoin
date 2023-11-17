@@ -12,14 +12,15 @@ import inspect
 import json
 import logging
 import os
+import pathlib
 import random
 import re
+import sys
 import time
-import unittest
 
 from . import coverage
 from .authproxy import AuthServiceProxy, JSONRPCException
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 logger = logging.getLogger("TestFramework.utils")
 
@@ -420,6 +421,22 @@ def get_datadir_path(dirname, n):
     return os.path.join(dirname, "node" + str(n))
 
 
+def get_temp_default_datadir(temp_dir: pathlib.Path) -> Tuple[dict, pathlib.Path]:
+    """Return os-specific environment variables that can be set to make the
+    GetDefaultDataDir() function return a datadir path under the provided
+    temp_dir, as well as the complete path it would return."""
+    if sys.platform == "win32":
+        env = dict(APPDATA=str(temp_dir))
+        datadir = temp_dir / "Bitcoin"
+    else:
+        env = dict(HOME=str(temp_dir))
+        if sys.platform == "darwin":
+            datadir = temp_dir / "Library/Application Support/Bitcoin"
+        else:
+            datadir = temp_dir / ".bitcoin"
+    return env, datadir
+
+
 def append_config(datadir, options):
     with open(os.path.join(datadir, "bitcoin.conf"), 'a', encoding='utf8') as f:
         for option in options:
@@ -537,33 +554,3 @@ def find_vout_for_address(node, txid, addr):
         if addr == tx["vout"][i]["scriptPubKey"]["address"]:
             return i
     raise RuntimeError("Vout not found for address: txid=%s, addr=%s" % (txid, addr))
-
-def modinv(a, n):
-    """Compute the modular inverse of a modulo n using the extended Euclidean
-    Algorithm. See https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm#Modular_integers.
-    """
-    # TODO: Change to pow(a, -1, n) available in Python 3.8
-    t1, t2 = 0, 1
-    r1, r2 = n, a
-    while r2 != 0:
-        q = r1 // r2
-        t1, t2 = t2, t1 - q * t2
-        r1, r2 = r2, r1 - q * r2
-    if r1 > 1:
-        return None
-    if t1 < 0:
-        t1 += n
-    return t1
-
-class TestFrameworkUtil(unittest.TestCase):
-    def test_modinv(self):
-        test_vectors = [
-            [7, 11],
-            [11, 29],
-            [90, 13],
-            [1891, 3797],
-            [6003722857, 77695236973],
-        ]
-
-        for a, n in test_vectors:
-            self.assertEqual(modinv(a, n), pow(a, n-2, n))

@@ -21,6 +21,7 @@
 #include <rpc/util.h>
 #include <sync.h>
 #include <timedata.h>
+#include <util/chaintype.h>
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/time.h>
@@ -355,7 +356,7 @@ static RPCHelpMan addconnection()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
-    if (Params().NetworkIDString() != CBaseChainParams::REGTEST) {
+    if (Params().GetChainType() != ChainType::REGTEST) {
         throw std::runtime_error("addconnection is for regression testing (-regtest mode) only.");
     }
 
@@ -513,15 +514,15 @@ static RPCHelpMan getaddednodeinfo()
 static RPCHelpMan getnettotals()
 {
     return RPCHelpMan{"getnettotals",
-                "\nReturns information about network traffic, including bytes in, bytes out,\n"
-                "and current time.\n",
-                {},
+        "Returns information about network traffic, including bytes in, bytes out,\n"
+        "and current system time.",
+        {},
                 RPCResult{
                    RPCResult::Type::OBJ, "", "",
                    {
                        {RPCResult::Type::NUM, "totalbytesrecv", "Total bytes received"},
                        {RPCResult::Type::NUM, "totalbytessent", "Total bytes sent"},
-                       {RPCResult::Type::NUM_TIME, "timemillis", "Current " + UNIX_EPOCH_TIME + " in milliseconds"},
+                       {RPCResult::Type::NUM_TIME, "timemillis", "Current system " + UNIX_EPOCH_TIME + " in milliseconds"},
                        {RPCResult::Type::OBJ, "uploadtarget", "",
                        {
                            {RPCResult::Type::NUM, "timeframe", "Length of the measuring timeframe in seconds"},
@@ -545,7 +546,7 @@ static RPCHelpMan getnettotals()
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("totalbytesrecv", connman.GetTotalBytesRecv());
     obj.pushKV("totalbytessent", connman.GetTotalBytesSent());
-    obj.pushKV("timemillis", GetTimeMillis());
+    obj.pushKV("timemillis", TicksSinceEpoch<std::chrono::milliseconds>(SystemClock::now()));
 
     UniValue outboundLimit(UniValue::VOBJ);
     outboundLimit.pushKV("timeframe", count_seconds(connman.GetMaxOutboundTimeframe()));
@@ -713,9 +714,10 @@ static RPCHelpMan setban()
         isSubnet = true;
 
     if (!isSubnet) {
-        CNetAddr resolved;
-        LookupHost(request.params[0].get_str(), resolved, false);
-        netAddr = resolved;
+        const std::optional<CNetAddr> addr{LookupHost(request.params[0].get_str(), false)};
+        if (addr.has_value()) {
+            netAddr = addr.value();
+        }
     }
     else
         LookupSubNet(request.params[0].get_str(), subNet);
@@ -943,11 +945,11 @@ static RPCHelpMan addpeeraddress()
     const bool tried{request.params[2].isNull() ? false : request.params[2].get_bool()};
 
     UniValue obj(UniValue::VOBJ);
-    CNetAddr net_addr;
+    std::optional<CNetAddr> net_addr{LookupHost(addr_string, false)};
     bool success{false};
 
-    if (LookupHost(addr_string, net_addr, false)) {
-        CService service{net_addr, port};
+    if (net_addr.has_value()) {
+        CService service{net_addr.value(), port};
         CAddress address{MaybeFlipIPv6toCJDNS(service), ServiceFlags{NODE_NETWORK | NODE_WITNESS}};
         address.nTime = Now<NodeSeconds>();
         // The source address is set equal to the address. This is equivalent to the peer

@@ -9,7 +9,9 @@
 #include <httpserver.h>
 
 #include <chainparamsbase.h>
+#include <common/args.h>
 #include <compat/compat.h>
+#include <logging.h>
 #include <netbase.h>
 #include <node/interface_ui.h>
 #include <rpc/protocol.h> // For HTTP status codes
@@ -18,7 +20,6 @@
 #include <util/check.h>
 #include <util/strencodings.h>
 #include <util/syscall_sandbox.h>
-#include <util/system.h>
 #include <util/threadnames.h>
 #include <util/translation.h>
 
@@ -221,12 +222,8 @@ static bool ClientAllowed(const CNetAddr& netaddr)
 static bool InitHTTPAllowList()
 {
     rpc_allow_subnets.clear();
-    CNetAddr localv4;
-    CNetAddr localv6;
-    LookupHost("127.0.0.1", localv4, false);
-    LookupHost("::1", localv6, false);
-    rpc_allow_subnets.push_back(CSubNet(localv4, 8));      // always allow IPv4 local subnet
-    rpc_allow_subnets.push_back(CSubNet(localv6));         // always allow IPv6 localhost
+    rpc_allow_subnets.push_back(CSubNet{LookupHost("127.0.0.1", false).value(), 8});  // always allow IPv4 local subnet
+    rpc_allow_subnets.push_back(CSubNet{LookupHost("::1", false).value()});  // always allow IPv6 localhost
     for (const std::string& strAllow : gArgs.GetArgs("-rpcallowip")) {
         CSubNet subnet;
         LookupSubNet(strAllow, subnet);
@@ -389,8 +386,8 @@ static bool HTTPBindAddresses(struct evhttp* http)
         LogPrintf("Binding RPC on address %s port %i\n", i->first, i->second);
         evhttp_bound_socket *bind_handle = evhttp_bind_socket_with_handle(http, i->first.empty() ? nullptr : i->first.c_str(), i->second);
         if (bind_handle) {
-            CNetAddr addr;
-            if (i->first.empty() || (LookupHost(i->first, addr, false) && addr.IsBindAny())) {
+            const std::optional<CNetAddr> addr{LookupHost(i->first, false)};
+            if (i->first.empty() || (addr.has_value() && addr->IsBindAny())) {
                 LogPrintf("WARNING: the RPC server is not safe to expose to untrusted networks such as the public internet\n");
             }
             boundSockets.push_back(bind_handle);

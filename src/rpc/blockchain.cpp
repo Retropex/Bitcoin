@@ -9,6 +9,7 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <coins.h>
+#include <common/args.h>
 #include <consensus/amount.h>
 #include <consensus/params.h>
 #include <consensus/validation.h>
@@ -40,7 +41,6 @@
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/strencodings.h>
-#include <util/system.h>
 #include <util/translation.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -58,9 +58,7 @@ using kernel::CoinStatsHashType;
 
 using node::BlockManager;
 using node::NodeContext;
-using node::ReadBlockFromDisk;
 using node::SnapshotMetadata;
-using node::UndoReadFromDisk;
 
 struct CUpdatedBlock
 {
@@ -183,7 +181,7 @@ UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIn
         case TxVerbosity::SHOW_DETAILS_AND_PREVOUT:
             CBlockUndo blockUndo;
             const bool is_not_pruned{WITH_LOCK(::cs_main, return !blockman.IsBlockPruned(blockindex))};
-            const bool have_undo{is_not_pruned && UndoReadFromDisk(blockUndo, blockindex)};
+            const bool have_undo{is_not_pruned && blockman.UndoReadFromDisk(blockUndo, *blockindex)};
 
             for (size_t i = 0; i < block.vtx.size(); ++i) {
                 const CTransactionRef& tx = block.vtx.at(i);
@@ -587,7 +585,7 @@ static CBlock GetBlockChecked(BlockManager& blockman, const CBlockIndex* pblocki
         }
     }
 
-    if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus())) {
+    if (!blockman.ReadBlockFromDisk(block, *pblockindex)) {
         // Block not found on disk. This could be because we have the block
         // header in our index but not yet have the block or did not accept the
         // block. Or if the block was pruned right after we released the lock above.
@@ -611,7 +609,7 @@ static CBlockUndo GetUndoChecked(BlockManager& blockman, const CBlockIndex* pblo
         }
     }
 
-    if (!UndoReadFromDisk(blockUndo, pblockindex)) {
+    if (!blockman.UndoReadFromDisk(blockUndo, *pblockindex)) {
         throw JSONRPCError(RPC_MISC_ERROR, "Can't read undo data from disk");
     }
 
@@ -979,11 +977,18 @@ static RPCHelpMan gettxoutsetinfo()
         if (hash_type == CoinStatsHashType::MUHASH) {
             ret.pushKV("muhash", stats.hashSerialized.GetHex());
         }
+
         CHECK_NONFATAL(stats.total_amount.has_value());
         ret.pushKV("total_amount", ValueFromAmount(stats.total_amount.value()));
+        statsClient.gauge("utxoset.txOutputs", stats.nTransactionOutputs, 1.0f);
+        statsClient.gauge("utxoset.blockHeight", stats.nHeight, 1.0f);
+        statsClient.gauge("utxoset.totalBTCAmount", (double)stats.total_amount.value() / (double)COIN, 1.0f);
+
         if (!stats.index_used) {
             ret.pushKV("transactions", static_cast<int64_t>(stats.nTransactions));
             ret.pushKV("disk_size", stats.nDiskSize);
+            statsClient.gauge("utxoset.tx", stats.nTransactions, 1.0f);
+            statsClient.gauge("utxoset.dbSizeBytes", stats.nDiskSize, 1.0f);
         } else {
             ret.pushKV("total_unspendable_amount", ValueFromAmount(stats.total_unspendable_amount));
 
@@ -1125,7 +1130,7 @@ static RPCHelpMan verifychain()
     LOCK(cs_main);
 
     Chainstate& active_chainstate = chainman.ActiveChainstate();
-    return CVerifyDB().VerifyDB(
+    return CVerifyDB(chainman.GetNotifications()).VerifyDB(
                active_chainstate, chainman.GetParams().GetConsensus(), active_chainstate.CoinsTip(), check_level, check_depth) == VerifyDBResult::SUCCESS;
 },
     };
@@ -1256,7 +1261,7 @@ RPCHelpMan getblockchaininfo()
     const CBlockIndex& tip{*CHECK_NONFATAL(active_chainstate.m_chain.Tip())};
     const int height{tip.nHeight};
     UniValue obj(UniValue::VOBJ);
-    obj.pushKV("chain", chainman.GetParams().NetworkIDString());
+    obj.pushKV("chain", chainman.GetParams().GetChainTypeString());
     obj.pushKV("blocks", height);
     obj.pushKV("headers", chainman.m_best_header ? chainman.m_best_header->nHeight : -1);
     obj.pushKV("bestblockhash", tip.GetBlockHash().GetHex());
@@ -1673,7 +1678,9 @@ static RPCHelpMan getchaintxstats()
         ret.pushKV("window_interval", nTimeDiff);
         if (nTimeDiff > 0) {
             ret.pushKV("txrate", ((double)nTxDiff) / nTimeDiff);
+            statsClient.gaugeDouble("transactions.txRate", ((double)nTxDiff) / nTimeDiff);
         }
+        statsClient.gauge("transactions.totalCount", (int64_t)pindex->nChainTx);
     }
 
     return ret;
@@ -2325,6 +2332,7 @@ static RPCHelpMan scanblocks()
                 {RPCResult::Type::ARR, "relevant_blocks", "Blocks that may have matched a scanobject.", {
                     {RPCResult::Type::STR_HEX, "blockhash", "A relevant blockhash"},
                 }},
+                {RPCResult::Type::BOOL, "completed", "true if the scan process was not aborted"}
             }},
             RPCResult{"when action=='status' and a scan is currently in progress", RPCResult::Type::OBJ, "", "", {
                     {RPCResult::Type::NUM, "progress", "Approximate percent complete"},
@@ -2362,8 +2370,7 @@ static RPCHelpMan scanblocks()
         // set the abort flag
         g_scanfilter_should_abort_scan = true;
         return true;
-    }
-    else if (request.params[0].get_str() == "start") {
+    } else if (request.params[0].get_str() == "start") {
         BlockFiltersScanReserver reserver;
         if (!reserver.reserve()) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Scan already in progress, use action \"abort\" or \"status\"");
@@ -2387,27 +2394,28 @@ static RPCHelpMan scanblocks()
         ChainstateManager& chainman = EnsureChainman(node);
 
         // set the start-height
-        const CBlockIndex* block = nullptr;
+        const CBlockIndex* start_index = nullptr;
         const CBlockIndex* stop_block = nullptr;
         {
             LOCK(cs_main);
             CChain& active_chain = chainman.ActiveChain();
-            block = active_chain.Genesis();
-            stop_block = active_chain.Tip();
+            start_index = active_chain.Genesis();
+            stop_block = active_chain.Tip(); // If no stop block is provided, stop at the chain tip.
             if (!request.params[2].isNull()) {
-                block = active_chain[request.params[2].getInt<int>()];
-                if (!block) {
+                start_index = active_chain[request.params[2].getInt<int>()];
+                if (!start_index) {
                     throw JSONRPCError(RPC_MISC_ERROR, "Invalid start_height");
                 }
             }
             if (!request.params[3].isNull()) {
                 stop_block = active_chain[request.params[3].getInt<int>()];
-                if (!stop_block || stop_block->nHeight < block->nHeight) {
+                if (!stop_block || stop_block->nHeight < start_index->nHeight) {
                     throw JSONRPCError(RPC_MISC_ERROR, "Invalid stop_height");
                 }
             }
         }
-        CHECK_NONFATAL(block);
+        CHECK_NONFATAL(start_index);
+        CHECK_NONFATAL(stop_block);
 
         // loop through the scan objects, add scripts to the needle_set
         GCSFilter::ElementSet needle_set;
@@ -2420,64 +2428,64 @@ static RPCHelpMan scanblocks()
         }
         UniValue blocks(UniValue::VARR);
         const int amount_per_chunk = 10000;
-        const CBlockIndex* start_index = block; // for remembering the start of a blockfilter range
         std::vector<BlockFilter> filters;
-        const CBlockIndex* start_block = block; // for progress reporting
-        const int total_blocks_to_process = stop_block->nHeight - start_block->nHeight;
+        int start_block_height = start_index->nHeight; // for progress reporting
+        const int total_blocks_to_process = stop_block->nHeight - start_block_height;
 
         g_scanfilter_should_abort_scan = false;
         g_scanfilter_progress = 0;
-        g_scanfilter_progress_height = start_block->nHeight;
+        g_scanfilter_progress_height = start_block_height;
+        bool completed = true;
 
-        while (block) {
+        const CBlockIndex* end_range = nullptr;
+        do {
             node.rpc_interruption_point(); // allow a clean shutdown
             if (g_scanfilter_should_abort_scan) {
-                LogPrintf("scanblocks RPC aborted at height %d.\n", block->nHeight);
+                completed = false;
                 break;
             }
-            const CBlockIndex* next = nullptr;
-            {
-                LOCK(cs_main);
-                CChain& active_chain = chainman.ActiveChain();
-                next = active_chain.Next(block);
-                if (block == stop_block) next = nullptr;
-            }
-            if (start_index->nHeight + amount_per_chunk == block->nHeight || next == nullptr) {
-                LogPrint(BCLog::RPC, "Fetching blockfilters from height %d to height %d.\n", start_index->nHeight, block->nHeight);
-                if (index->LookupFilterRange(start_index->nHeight, block, filters)) {
-                    for (const BlockFilter& filter : filters) {
-                        // compare the elements-set with each filter
-                        if (filter.GetFilter().MatchAny(needle_set)) {
-                            if (filter_false_positives) {
-                                // Double check the filter matches by scanning the block
-                                const CBlockIndex& blockindex = *CHECK_NONFATAL(WITH_LOCK(cs_main, return chainman.m_blockman.LookupBlockIndex(filter.GetBlockHash())));
 
-                                if (!CheckBlockFilterMatches(chainman.m_blockman, blockindex, needle_set)) {
-                                    continue;
-                                }
+            // split the lookup range in chunks if we are deeper than 'amount_per_chunk' blocks from the stopping block
+            int start_block = !end_range ? start_index->nHeight : start_index->nHeight + 1; // to not include the previous round 'end_range' block
+            end_range = (start_block + amount_per_chunk < stop_block->nHeight) ?
+                    WITH_LOCK(::cs_main, return chainman.ActiveChain()[start_block + amount_per_chunk]) :
+                    stop_block;
+
+            if (index->LookupFilterRange(start_block, end_range, filters)) {
+                for (const BlockFilter& filter : filters) {
+                    // compare the elements-set with each filter
+                    if (filter.GetFilter().MatchAny(needle_set)) {
+                        if (filter_false_positives) {
+                            // Double check the filter matches by scanning the block
+                            const CBlockIndex& blockindex = *CHECK_NONFATAL(WITH_LOCK(cs_main, return chainman.m_blockman.LookupBlockIndex(filter.GetBlockHash())));
+
+                            if (!CheckBlockFilterMatches(chainman.m_blockman, blockindex, needle_set)) {
+                                continue;
                             }
-
-                            blocks.push_back(filter.GetBlockHash().GetHex());
-                            LogPrint(BCLog::RPC, "scanblocks: found match in %s\n", filter.GetBlockHash().GetHex());
                         }
+
+                        blocks.push_back(filter.GetBlockHash().GetHex());
                     }
                 }
-                start_index = block;
-
-                // update progress
-                int blocks_processed = block->nHeight - start_block->nHeight;
-                if (total_blocks_to_process > 0) { // avoid division by zero
-                    g_scanfilter_progress = (int)(100.0 / total_blocks_to_process * blocks_processed);
-                } else {
-                    g_scanfilter_progress = 100;
-                }
-                g_scanfilter_progress_height = block->nHeight;
             }
-            block = next;
-        }
-        ret.pushKV("from_height", start_block->nHeight);
-        ret.pushKV("to_height", g_scanfilter_progress_height.load());
+            start_index = end_range;
+
+            // update progress
+            int blocks_processed = end_range->nHeight - start_block_height;
+            if (total_blocks_to_process > 0) { // avoid division by zero
+                g_scanfilter_progress = (int)(100.0 / total_blocks_to_process * blocks_processed);
+            } else {
+                g_scanfilter_progress = 100;
+            }
+            g_scanfilter_progress_height = end_range->nHeight;
+
+        // Finish if we reached the stop block
+        } while (start_index != stop_block);
+
+        ret.pushKV("from_height", start_block_height);
+        ret.pushKV("to_height", start_index->nHeight); // start_index is always the last scanned block here
         ret.pushKV("relevant_blocks", blocks);
+        ret.pushKV("completed", completed);
     }
     else {
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid action '%s'", request.params[0].get_str()));

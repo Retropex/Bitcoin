@@ -6,6 +6,8 @@
 
 export LC_ALL=C.UTF-8
 
+set -ex
+
 # The root dir.
 # The ci system copies this folder.
 BASE_ROOT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )"/../../ >/dev/null 2>&1 && pwd )
@@ -37,7 +39,6 @@ export USE_BUSY_BOX=${USE_BUSY_BOX:-false}
 export RUN_UNIT_TESTS=${RUN_UNIT_TESTS:-true}
 export RUN_FUNCTIONAL_TESTS=${RUN_FUNCTIONAL_TESTS:-true}
 export RUN_TIDY=${RUN_TIDY:-false}
-export RUN_SECURITY_TESTS=${RUN_SECURITY_TESTS:-false}
 # By how much to scale the test_runner timeouts (option --timeout-factor).
 # This is needed because some ci machines have slow CPU or disk, so sanitizers
 # might be slow or a reindex might be waiting on disk IO.
@@ -45,8 +46,6 @@ export TEST_RUNNER_TIMEOUT_FACTOR=${TEST_RUNNER_TIMEOUT_FACTOR:-40}
 export TEST_RUNNER_ENV=${TEST_RUNNER_ENV:-}
 export RUN_FUZZ_TESTS=${RUN_FUZZ_TESTS:-false}
 
-export CONTAINER_NAME=${CONTAINER_NAME:-ci_unnamed}
-export CI_IMAGE_NAME_TAG=${CI_IMAGE_NAME_TAG:-ubuntu:20.04}
 # Randomize test order.
 # See https://www.boost.org/doc/libs/1_71_0/libs/test/doc/html/boost_test/utf_reference/rt_param_reference/random.html
 export BOOST_TEST_RANDOM=${BOOST_TEST_RANDOM:-1}

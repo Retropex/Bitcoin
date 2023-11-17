@@ -1,56 +1,33 @@
-// Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2023 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-/**
- * Server/client environment: argument handling, config file parsing,
- * thread wrappers, startup time
- */
-#ifndef BITCOIN_UTIL_SYSTEM_H
-#define BITCOIN_UTIL_SYSTEM_H
+#ifndef BITCOIN_COMMON_ARGS_H
+#define BITCOIN_COMMON_ARGS_H
 
-#if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
-#endif
-
-#include <compat/assumptions.h>
 #include <compat/compat.h>
-#include <logging.h>
 #include <sync.h>
+#include <util/chaintype.h>
 #include <util/fs.h>
 #include <util/settings.h>
-#include <util/time.h>
 
-#include <any>
+#include <iosfwd>
+#include <list>
 #include <map>
 #include <optional>
 #include <set>
 #include <stdint.h>
 #include <string>
-#include <utility>
+#include <variant>
 #include <vector>
 
 class ArgsManager;
-class UniValue;
-
-// Application startup time (used for uptime calculation)
-int64_t GetStartupTime();
 
 extern const char * const BITCOIN_CONF_FILENAME;
 extern const char * const BITCOIN_SETTINGS_FILENAME;
 
-void SetupEnvironment();
-bool SetupNetworking();
 // Return true if -datadir option points to a valid directory or is not specified.
 bool CheckDataDirOption(const ArgsManager& args);
-fs::path GetConfigFile(const ArgsManager& args, const fs::path& configuration_file_path);
-#ifndef WIN32
-std::string ShellEscape(const std::string& arg);
-#endif
-#if HAVE_SYSTEM
-void runCommand(const std::string& strCommand);
-#endif
 
 /**
  * Most paths passed as configuration arguments are treated as relative to
@@ -90,8 +67,18 @@ enum class OptionsCategory {
     HIDDEN // Always the last option to avoid printing these in the help
 };
 
-struct SectionInfo
-{
+struct KeyInfo {
+    std::string name;
+    std::string section;
+    bool negated{false};
+};
+
+KeyInfo InterpretKey(std::string key);
+
+std::optional<util::SettingsValue> InterpretValue(const KeyInfo& key, const std::string* value,
+                                                         unsigned int flags, std::string& error);
+
+struct SectionInfo {
     std::string m_name;
     std::string m_file;
     int m_line;
@@ -150,6 +137,7 @@ protected:
     std::map<OptionsCategory, std::map<std::string, Arg>> m_available_args GUARDED_BY(cs_args);
     bool m_accept_any_command GUARDED_BY(cs_args){true};
     std::list<SectionInfo> m_config_sections GUARDED_BY(cs_args);
+    std::optional<fs::path> m_config_path GUARDED_BY(cs_args);
     mutable fs::path m_cached_blocks_path GUARDED_BY(cs_args);
     mutable fs::path m_cached_datadir_path GUARDED_BY(cs_args);
     mutable fs::path m_cached_network_datadir_path GUARDED_BY(cs_args);
@@ -337,10 +325,18 @@ protected:
     void ForceSetArg(const std::string& strArg, const std::string& strValue);
 
     /**
-     * Returns the appropriate chain name from the program arguments.
-     * @return CBaseChainParams::MAIN by default; raises runtime error if an invalid combination is given.
+     * Returns the appropriate chain type from the program arguments.
+     * @return ChainType::MAIN by default; raises runtime error if an invalid
+     * combination, or unknown chain is given.
      */
-    std::string GetChainName() const;
+    ChainType GetChainType() const;
+
+    /**
+     * Returns the appropriate chain type string from the program arguments.
+     * @return ChainType::MAIN string by default; raises runtime error if an
+     * invalid combination is given.
+     */
+    std::string GetChainTypeString() const;
 
     /**
      * Add argument
@@ -425,6 +421,14 @@ private:
      */
     const fs::path& GetDataDir(bool net_specific) const;
 
+    /**
+     * Return -regtest/-signet/-testnet/-chain= setting as a ChainType enum if a
+     * recognized chain type was set, or as a string if an unrecognized chain
+     * name was set. Raise an exception if an invalid combination of flags was
+     * provided.
+     */
+    std::variant<ChainType, std::string> GetChainArg() const;
+
     // Helper function for LogArgs().
     void logArgsPrefix(
         const std::string& prefix,
@@ -459,43 +463,7 @@ std::string HelpMessageGroup(const std::string& message);
  */
 std::string HelpMessageOpt(const std::string& option, const std::string& message);
 
-/**
- * Return the number of cores available on the current system.
- * @note This does count virtual cores, such as those provided by HyperThreading.
- */
-int GetNumCores();
-
-/**
- * On platforms that support it, tell the kernel the calling thread is
- * CPU-intensive and non-interactive. See SCHED_BATCH in sched(7) for details.
- *
- */
-void ScheduleBatchPriority();
-
-namespace util {
-
-//! Simplification of std insertion
-template <typename Tdst, typename Tsrc>
-inline void insert(Tdst& dst, const Tsrc& src) {
-    dst.insert(dst.begin(), src.begin(), src.end());
-}
-template <typename TsetT, typename Tsrc>
-inline void insert(std::set<TsetT>& dst, const Tsrc& src) {
-    dst.insert(src.begin(), src.end());
-}
-
-/**
- * Helper function to access the contained object of a std::any instance.
- * Returns a pointer to the object if passed instance has a value and the type
- * matches, nullptr otherwise.
- */
-template<typename T>
-T* AnyPtr(const std::any& any) noexcept
-{
-    T* const* ptr = std::any_cast<T*>(&any);
-    return ptr ? *ptr : nullptr;
-}
-
+namespace common {
 #ifdef WIN32
 class WinCmdLineArgs
 {
@@ -510,7 +478,6 @@ private:
     std::vector<std::string> args;
 };
 #endif
+} // namespace common
 
-} // namespace util
-
-#endif // BITCOIN_UTIL_SYSTEM_H
+#endif // BITCOIN_COMMON_ARGS_H

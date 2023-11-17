@@ -133,6 +133,7 @@ BITCOIN_CORE_H = \
   checkqueue.h \
   clientversion.h \
   coins.h \
+  common/args.h \
   common/bloom.h \
   common/init.h \
   common/run_command.h \
@@ -142,6 +143,7 @@ BITCOIN_CORE_H = \
   compat/compat.h \
   compat/cpuid.h \
   compat/endian.h \
+  common/system.h \
   compressor.h \
   consensus/consensus.h \
   consensus/tx_check.h \
@@ -185,6 +187,7 @@ BITCOIN_CORE_H = \
   kernel/mempool_limits.h \
   kernel/mempool_options.h \
   kernel/mempool_persist.h \
+  kernel/notifications_interface.h \
   kernel/validation_cache_sizes.h \
   key.h \
   key_io.h \
@@ -213,9 +216,11 @@ BITCOIN_CORE_H = \
   node/database_args.h \
   node/eviction.h \
   node/interface_ui.h \
+  node/kernel_notifications.h \
   node/mempool_args.h \
   node/mempool_persist_args.h \
   node/miner.h \
+  node/mini_miner.h \
   node/minisketchwrapper.h \
   node/psbt.h \
   node/transaction.h \
@@ -259,7 +264,9 @@ BITCOIN_CORE_H = \
   script/standard.h \
   shutdown.h \
   signet.h \
+  statsd_client.h \
   streams.h \
+  support/allocators/pool.h \
   support/allocators/secure.h \
   support/allocators/zeroafterfree.h \
   support/cleanse.h \
@@ -274,10 +281,13 @@ BITCOIN_CORE_H = \
   txorphanage.h \
   txrequest.h \
   undo.h \
+  util/any.h \
   util/asmap.h \
+  util/batchpriority.h \
   util/bip32.h \
   util/bitdeque.h \
   util/bytevectorhash.h \
+  util/chaintype.h \
   util/check.h \
   util/epochguard.h \
   util/error.h \
@@ -290,6 +300,7 @@ BITCOIN_CORE_H = \
   util/golombrice.h \
   util/hash_type.h \
   util/hasher.h \
+  util/insert.h \
   util/macros.h \
   util/message.h \
   util/moneystr.h \
@@ -305,7 +316,6 @@ BITCOIN_CORE_H = \
   util/string.h \
   util/syscall_sandbox.h \
   util/syserror.h \
-  util/system.h \
   util/thread.h \
   util/threadinterrupt.h \
   util/threadnames.h \
@@ -354,7 +364,7 @@ BITCOIN_CORE_H = \
 
 obj/build.h: FORCE
 	@$(MKDIR_P) $(builddir)/obj
-	@$(top_srcdir)/share/genbuild.sh "$(abs_top_builddir)/src/obj/build.h" \
+	$(AM_V_GEN) $(top_srcdir)/share/genbuild.sh "$(abs_top_builddir)/src/obj/build.h" \
 	  "$(abs_top_srcdir)"
 libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 
@@ -404,9 +414,11 @@ libbitcoin_node_a_SOURCES = \
   node/eviction.cpp \
   node/interface_ui.cpp \
   node/interfaces.cpp \
+  node/kernel_notifications.cpp \
   node/mempool_args.cpp \
   node/mempool_persist_args.cpp \
   node/miner.cpp \
+  node/mini_miner.cpp \
   node/minisketchwrapper.cpp \
   node/psbt.cpp \
   node/transaction.cpp \
@@ -436,6 +448,7 @@ libbitcoin_node_a_SOURCES = \
   script/sigcache.cpp \
   shutdown.cpp \
   signet.cpp \
+  statsd_client.cpp \
   timedata.cpp \
   torcontrol.cpp \
   txdb.cpp \
@@ -646,10 +659,13 @@ libbitcoin_common_a_SOURCES = \
   bech32.cpp \
   chainparams.cpp \
   coins.cpp \
+  common/args.cpp \
   common/bloom.cpp \
+  common/config.cpp \
   common/init.cpp \
   common/interfaces.cpp \
   common/run_command.cpp \
+  common/system.cpp \
   compressor.cpp \
   core_read.cpp \
   core_write.cpp \
@@ -701,8 +717,10 @@ libbitcoin_util_a_SOURCES = \
   support/cleanse.cpp \
   sync.cpp \
   util/asmap.cpp \
+  util/batchpriority.cpp \
   util/bip32.cpp \
   util/bytevectorhash.cpp \
+  util/chaintype.cpp \
   util/check.cpp \
   util/error.cpp \
   util/exception.cpp \
@@ -713,7 +731,6 @@ libbitcoin_util_a_SOURCES = \
   util/hasher.cpp \
   util/sock.cpp \
   util/syserror.cpp \
-  util/system.cpp \
   util/message.cpp \
   util/moneystr.cpp \
   util/rbf.cpp \
@@ -901,6 +918,8 @@ libbitcoinkernel_la_SOURCES = \
   chainparams.cpp \
   clientversion.cpp \
   coins.cpp \
+  common/args.cpp \
+  common/config.cpp \
   compressor.cpp \
   consensus/merkle.cpp \
   consensus/tx_check.cpp \
@@ -950,6 +969,8 @@ libbitcoinkernel_la_SOURCES = \
   txdb.cpp \
   txmempool.cpp \
   uint256.cpp \
+  util/batchpriority.cpp \
+  util/chaintype.cpp \
   util/check.cpp \
   util/exception.cpp \
   util/fs.cpp \
@@ -964,7 +985,6 @@ libbitcoinkernel_la_SOURCES = \
   util/string.cpp \
   util/syscall_sandbox.cpp \
   util/syserror.cpp \
-  util/system.cpp \
   util/thread.cpp \
   util/threadnames.cpp \
   util/time.cpp \
@@ -1040,7 +1060,7 @@ clean-local:
 	-rm -rf test/__pycache__
 
 .rc.o:
-	@test -f $(WINDRES)
+	@test -f $(WINDRES) || (echo "windres $(WINDRES) not found, but is required to compile windows resource files"; exit 1)
 	## FIXME: How to get the appropriate modulename_CPPFLAGS in here?
 	$(AM_V_GEN) $(WINDRES) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(CPPFLAGS) -DWINDRES_PREPROC -i $< -o $@
 
@@ -1095,12 +1115,11 @@ endif
 
 %.raw.h: %.raw
 	@$(MKDIR_P) $(@D)
-	@{ \
+	$(AM_V_GEN) { \
 	 echo "static unsigned const char $(*F)_raw[] = {" && \
 	 $(HEXDUMP) -v -e '8/1 "0x%02x, "' -e '"\n"' $< | $(SED) -e 's/0x  ,//g' && \
 	 echo "};"; \
 	} > "$@.new" && mv -f "$@.new" "$@"
-	@echo "Generated $@"
 
 include Makefile.minisketch.include
 

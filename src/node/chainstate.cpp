@@ -51,7 +51,7 @@ static ChainstateLoadResult CompleteChainstateInitialization(
         pblocktree->WriteReindexing(true);
         //If we're reindexing in prune mode, wipe away unusable block files and all undo data files
         if (options.prune) {
-            CleanupBlockRevFiles();
+            chainman.m_blockman.CleanupBlockRevFiles();
         }
     }
 
@@ -253,7 +253,7 @@ ChainstateLoadResult VerifyLoadedChainstate(ChainstateManager& chainman, const C
                                                          "Only rebuild the block database if you are sure that your computer's date and time are correct")};
             }
 
-            VerifyDBResult result = CVerifyDB().VerifyDB(
+            VerifyDBResult result = CVerifyDB(chainman.GetNotifications()).VerifyDB(
                 *chainstate, chainman.GetConsensus(), chainstate->CoinsDB(),
                 options.check_level,
                 options.check_blocks);

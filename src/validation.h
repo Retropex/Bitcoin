@@ -45,6 +45,9 @@
 #include <utility>
 #include <vector>
 
+#include "statsd_client.h"
+extern statsd::StatsdClient statsClient;
+
 class Chainstate;
 class CBlockTreeDB;
 class CTxMemPool;
@@ -364,9 +367,13 @@ enum class VerifyDBResult {
 };
 
 /** RAII wrapper for VerifyDB: Verify consistency of the block and coin databases */
-class CVerifyDB {
+class CVerifyDB
+{
+private:
+    kernel::Notifications& m_notifications;
+
 public:
-    CVerifyDB();
+    explicit CVerifyDB(kernel::Notifications& notifications);
     ~CVerifyDB();
     [[nodiscard]] VerifyDBResult VerifyDB(
         Chainstate& chainstate,
@@ -955,6 +962,7 @@ public:
     bool ShouldCheckBlockIndex() const { return *Assert(m_options.check_block_index); }
     const arith_uint256& MinimumChainWork() const { return *Assert(m_options.minimum_chain_work); }
     const uint256& AssumedValidBlock() const { return *Assert(m_options.assumed_valid_block); }
+    kernel::Notifications& GetNotifications() const { return m_options.notifications; };
 
     /**
      * Alias for ::cs_main.

@@ -7,15 +7,16 @@
 
 #include <chainparams.h>
 #include <chainparamsbase.h>
+#include <common/args.h>
 #include <compat/compat.h>
 #include <crypto/hmac_sha256.h>
+#include <logging.h>
 #include <net.h>
 #include <netaddress.h>
 #include <netbase.h>
 #include <util/readwritefile.h>
 #include <util/strencodings.h>
 #include <util/syscall_sandbox.h>
-#include <util/system.h>
 #include <util/thread.h>
 #include <util/time.h>
 
@@ -132,15 +133,15 @@ bool TorControlConnection::Connect(const std::string& tor_control_center, const 
         Disconnect();
     }
 
-    CService control_service;
-    if (!Lookup(tor_control_center, control_service, 9051, fNameLookup)) {
+    const std::optional<CService> control_service{Lookup(tor_control_center, 9051, fNameLookup)};
+    if (!control_service.has_value()) {
         LogPrintf("tor: Failed to look up control center %s\n", tor_control_center);
         return false;
     }
 
     struct sockaddr_storage control_address;
     socklen_t control_address_len = sizeof(control_address);
-    if (!control_service.GetSockAddr(reinterpret_cast<struct sockaddr*>(&control_address), &control_address_len)) {
+    if (!control_service.value().GetSockAddr(reinterpret_cast<struct sockaddr*>(&control_address), &control_address_len)) {
         LogPrintf("tor: Error parsing socket address %s\n", tor_control_center);
         return false;
     }

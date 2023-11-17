@@ -14,16 +14,10 @@ testing compared to other parts of the codebase. If you want to keep the work tr
 system in a virtual machine with a Linux operating system of your choice.
 
 To allow for a wide range of tested environments, but also ensure reproducibility to some extent, the test stage
-requires `docker` to be installed. To install all requirements on Ubuntu, run
+requires `bash`, `docker`, and `python3` to be installed. To install all requirements on Ubuntu, run
 
 ```
-sudo apt install docker.io bash
-```
-
-To run the default test stage,
-
-```
-./ci/test_run_all.sh
+sudo apt install bash docker.io python3
 ```
 
 To run the test stage with a specific configuration,

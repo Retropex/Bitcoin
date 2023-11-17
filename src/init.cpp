@@ -18,6 +18,9 @@
 #include <blockfilter.h>
 #include <chain.h>
 #include <chainparams.h>
+#include <chainparamsbase.h>
+#include <common/args.h>
+#include <common/system.h>
 #include <consensus/amount.h>
 #include <deploymentstatus.h>
 #include <hash.h>
@@ -43,6 +46,7 @@
 #include <node/chainstatemanager_args.h>
 #include <node/context.h>
 #include <node/interface_ui.h>
+#include <node/kernel_notifications.h>
 #include <node/mempool_args.h>
 #include <node/mempool_persist_args.h>
 #include <node/miner.h>
@@ -68,6 +72,7 @@
 #include <txdb.h>
 #include <txmempool.h>
 #include <util/asmap.h>
+#include <util/chaintype.h>
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/fs_helpers.h>
@@ -76,7 +81,6 @@
 #include <util/string.h>
 #include <util/syscall_sandbox.h>
 #include <util/syserror.h>
-#include <util/system.h>
 #include <util/thread.h>
 #include <util/threadnames.h>
 #include <util/time.h>
@@ -110,22 +114,25 @@
 #include <zmq/zmqrpc.h>
 #endif
 
+using kernel::DEFAULT_STOPAFTERBLOCKIMPORT;
 using kernel::DumpMempool;
 using kernel::ValidationCacheSizes;
 
 using node::ApplyArgsManOptions;
+using node::BlockManager;
 using node::CacheSizes;
 using node::CalculateCacheSizes;
 using node::DEFAULT_PERSIST_MEMPOOL;
 using node::DEFAULT_PRINTPRIORITY;
-using node::DEFAULT_STOPAFTERBLOCKIMPORT;
+using node::fReindex;
+using node::g_indexes_ready_to_sync;
+using node::KernelNotifications;
 using node::LoadChainstate;
 using node::MempoolPath;
-using node::ShouldPersistMempool;
 using node::NodeContext;
+using node::ShouldPersistMempool;
 using node::ThreadImport;
 using node::VerifyLoadedChainstate;
-using node::fReindex;
 
 static constexpr bool DEFAULT_PROXYRANDOMIZE{true};
 static constexpr bool DEFAULT_REST_ENABLE{false};
@@ -326,9 +333,8 @@ void Shutdown(NodeContext& node)
 
 #if ENABLE_ZMQ
     if (g_zmq_notification_interface) {
-        UnregisterValidationInterface(g_zmq_notification_interface);
-        delete g_zmq_notification_interface;
-        g_zmq_notification_interface = nullptr;
+        UnregisterValidationInterface(g_zmq_notification_interface.get());
+        g_zmq_notification_interface.reset();
     }
 #endif
 
@@ -408,14 +414,14 @@ void SetupServerArgs(ArgsManager& argsman)
 
     init::AddLoggingArgs(argsman);
 
-    const auto defaultBaseParams = CreateBaseChainParams(CBaseChainParams::MAIN);
-    const auto testnetBaseParams = CreateBaseChainParams(CBaseChainParams::TESTNET);
-    const auto signetBaseParams = CreateBaseChainParams(CBaseChainParams::SIGNET);
-    const auto regtestBaseParams = CreateBaseChainParams(CBaseChainParams::REGTEST);
-    const auto defaultChainParams = CreateChainParams(argsman, CBaseChainParams::MAIN);
-    const auto testnetChainParams = CreateChainParams(argsman, CBaseChainParams::TESTNET);
-    const auto signetChainParams = CreateChainParams(argsman, CBaseChainParams::SIGNET);
-    const auto regtestChainParams = CreateChainParams(argsman, CBaseChainParams::REGTEST);
+    const auto defaultBaseParams = CreateBaseChainParams(ChainType::MAIN);
+    const auto testnetBaseParams = CreateBaseChainParams(ChainType::TESTNET);
+    const auto signetBaseParams = CreateBaseChainParams(ChainType::SIGNET);
+    const auto regtestBaseParams = CreateBaseChainParams(ChainType::REGTEST);
+    const auto defaultChainParams = CreateChainParams(argsman, ChainType::MAIN);
+    const auto testnetChainParams = CreateChainParams(argsman, ChainType::TESTNET);
+    const auto signetChainParams = CreateChainParams(argsman, ChainType::SIGNET);
+    const auto regtestChainParams = CreateChainParams(argsman, ChainType::REGTEST);
 
     // Hidden Options
     std::vector<std::string> hidden_args = {
@@ -441,6 +447,7 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-dbbatchsize", strprintf("Maximum database write batch size in bytes (default: %u)", nDefaultDbBatchSize), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dbcache=<n>", strprintf("Maximum database cache size <n> MiB (%d to %d, default: %d). In addition, unused mempool memory is shared for this cache (see -maxmempool).", nMinDbCache, nMaxDbCache, nDefaultDbCache), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-includeconf=<file>", "Specify additional configuration file, relative to the -datadir path (only useable from configuration file, not command line)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-allowignoredconf", strprintf("For backwards compatibility, treat an unused %s file in the datadir as a warning, not an error.", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-loadblock=<file>", "Imports blocks from external file on startup", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-maxmempool=<n>", strprintf("Keep the transaction memory pool below <n> megabytes (default: %u)", DEFAULT_MAX_MEMPOOL_SIZE_MB), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-maxorphantx=<n>", strprintf("Keep at most <n> unconnectable transactions in memory (default: %u)", DEFAULT_MAX_ORPHAN_TRANSACTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -454,7 +461,7 @@ void SetupServerArgs(ArgsManager& argsman)
             "Warning: Reverting this setting requires re-downloading the entire blockchain. "
             "(default: 0 = disable pruning blocks, 1 = allow manual pruning via RPC, >=%u = automatically prune block files to stay under the specified target size in MiB)", MIN_DISK_SPACE_FOR_BLOCK_FILES / 1024 / 1024), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-reindex", "Rebuild chain state and block index from the blk*.dat files on disk. This will also rebuild active optional indexes.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-reindex-chainstate", "Rebuild chain state from the currently indexed blocks. When in pruning mode or if blocks on disk might be corrupted, use full -reindex instead. Deactivate all optional indexes before running this.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-reindex-chainstate", "Rebuild chain state from the currently indexed blocks. When in pruning mode or if blocks on disk might be corrupted, use full -reindex instead.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-settings=<file>", strprintf("Specify path to dynamic settings data file. Can be disabled with -nosettings. File is written at runtime and not meant to be edited by users (use %s instead for custom settings). Relative paths will be prefixed by datadir location. (default: %s)", BITCOIN_CONF_FILENAME, BITCOIN_SETTINGS_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #if HAVE_SYSTEM
     argsman.AddArg("-startupnotify=<cmd>", "Execute command on startup.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -845,14 +852,14 @@ bool AppInitParameterInteraction(const ArgsManager& args, bool use_syscall_sandb
 
     // Error if network-specific options (-addnode, -connect, etc) are
     // specified in default section of config file, but not overridden
-    // on the command line or in this network's section of the config file.
-    std::string network = args.GetChainName();
-    if (network == CBaseChainParams::SIGNET) {
+    // on the command line or in this chain's section of the config file.
+    ChainType chain = args.GetChainType();
+    if (chain == ChainType::SIGNET) {
         LogPrintf("Signet derived magic (message start): %s\n", HexStr(chainparams.MessageStart()));
     }
     bilingual_str errors;
     for (const auto& arg : args.GetUnsuitableSectionOnlyArgs()) {
-        errors += strprintf(_("Config setting for %s only applied on %s network when in [%s] section.") + Untranslated("\n"), arg, network, network);
+        errors += strprintf(_("Config setting for %s only applied on %s network when in [%s] section.") + Untranslated("\n"), arg, ChainTypeToString(chain), ChainTypeToString(chain));
     }
 
     if (!errors.empty()) {
@@ -981,19 +988,6 @@ bool AppInitParameterInteraction(const ArgsManager& args, bool use_syscall_sandb
     if (args.GetIntArg("-rpcserialversion", DEFAULT_RPC_SERIALIZE_VERSION) > 1)
         return InitError(Untranslated("Unknown rpcserialversion requested."));
 
-    if (args.GetBoolArg("-reindex-chainstate", false)) {
-        // indexes that must be deactivated to prevent index corruption, see #24630
-        if (args.GetBoolArg("-coinstatsindex", DEFAULT_COINSTATSINDEX)) {
-            return InitError(_("-reindex-chainstate option is not compatible with -coinstatsindex. Please temporarily disable coinstatsindex while using -reindex-chainstate, or replace -reindex-chainstate with -reindex to fully rebuild all indexes."));
-        }
-        if (g_enabled_filter_types.count(BlockFilterType::BASIC)) {
-            return InitError(_("-reindex-chainstate option is not compatible with -blockfilterindex. Please temporarily disable blockfilterindex while using -reindex-chainstate, or replace -reindex-chainstate with -reindex to fully rebuild all indexes."));
-        }
-        if (args.GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
-            return InitError(_("-reindex-chainstate option is not compatible with -txindex. Please temporarily disable txindex while using -reindex-chainstate, or replace -reindex-chainstate with -reindex to fully rebuild all indexes."));
-        }
-    }
-
 #if defined(USE_SYSCALL_SANDBOX)
     if (args.IsArgSet("-sandbox") && !args.IsArgNegated("-sandbox")) {
         const std::string sandbox_arg{args.GetArg("-sandbox", "")};
@@ -1030,16 +1024,23 @@ bool AppInitParameterInteraction(const ArgsManager& args, bool use_syscall_sandb
 
     // Also report errors from parsing before daemonization
     {
+        KernelNotifications notifications{};
         ChainstateManager::Options chainman_opts_dummy{
             .chainparams = chainparams,
             .datadir = args.GetDataDirNet(),
+            .notifications = notifications,
         };
-        if (const auto error{ApplyArgsManOptions(args, chainman_opts_dummy)}) {
-            return InitError(*error);
+        auto chainman_result{ApplyArgsManOptions(args, chainman_opts_dummy)};
+        if (!chainman_result) {
+            return InitError(util::ErrorString(chainman_result));
         }
-        node::BlockManager::Options blockman_opts_dummy{};
-        if (const auto error{ApplyArgsManOptions(args, blockman_opts_dummy)}) {
-            return InitError(*error);
+        BlockManager::Options blockman_opts_dummy{
+            .chainparams = chainman_opts_dummy.chainparams,
+            .blocks_dir = args.GetBlocksDirPath(),
+        };
+        auto blockman_result{ApplyArgsManOptions(args, blockman_opts_dummy)};
+        if (!blockman_result) {
+            return InitError(util::ErrorString(blockman_result));
         }
     }
 
@@ -1062,8 +1063,9 @@ static bool LockDataDirectory(bool probeOnly)
 bool AppInitSanityChecks(const kernel::Context& kernel)
 {
     // ********************************************************* Step 4: sanity checks
-    if (auto error = kernel::SanityChecks(kernel)) {
-        InitError(*error);
+    auto result{kernel::SanityChecks(kernel)};
+    if (!result) {
+        InitError(util::ErrorString(result));
         return InitError(strprintf(_("Initialization sanity check failed. %s is shutting down."), PACKAGE_NAME));
     }
 
@@ -1238,9 +1240,9 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         // Initialize addrman
         assert(!node.addrman);
         uiInterface.InitMessage(_("Loading P2P addresses…").translated);
-        if (const auto error{LoadAddrman(*node.netgroupman, args, node.addrman)}) {
-            return InitError(*error);
-        }
+        auto addrman{LoadAddrman(*node.netgroupman, args)};
+        if (!addrman) return InitError(util::ErrorString(addrman));
+        node.addrman = std::move(*addrman);
     }
 
     assert(!node.banman);
@@ -1369,12 +1371,12 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     // -noproxy (or -proxy=0) as well as the empty string can be used to not set a proxy, this is the default
     std::string proxyArg = args.GetArg("-proxy", "");
     if (proxyArg != "" && proxyArg != "0") {
-        CService proxyAddr;
-        if (!Lookup(proxyArg, proxyAddr, 9050, fNameLookup)) {
+        const std::optional<CService> proxyAddr{Lookup(proxyArg, 9050, fNameLookup)};
+        if (!proxyAddr.has_value()) {
             return InitError(strprintf(_("Invalid -proxy address or hostname: '%s'"), proxyArg));
         }
 
-        Proxy addrProxy = Proxy(proxyAddr, proxyRandomize);
+        Proxy addrProxy = Proxy(proxyAddr.value(), proxyRandomize);
         if (!addrProxy.IsValid())
             return InitError(strprintf(_("Invalid -proxy address or hostname: '%s'"), proxyArg));
 
@@ -1400,11 +1402,11 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                       "reaching the Tor network is explicitly forbidden: -onion=0"));
             }
         } else {
-            CService addr;
-            if (!Lookup(onionArg, addr, 9050, fNameLookup) || !addr.IsValid()) {
+            const std::optional<CService> addr{Lookup(onionArg, 9050, fNameLookup)};
+            if (!addr.has_value() || !addr->IsValid()) {
                 return InitError(strprintf(_("Invalid -onion address or hostname: '%s'"), onionArg));
             }
-            onion_proxy = Proxy{addr, proxyRandomize};
+            onion_proxy = Proxy{addr.value(), proxyRandomize};
         }
     }
 
@@ -1424,34 +1426,43 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     }
 
     for (const std::string& strAddr : args.GetArgs("-externalip")) {
-        CService addrLocal;
-        if (Lookup(strAddr, addrLocal, GetListenPort(), fNameLookup) && addrLocal.IsValid())
-            AddLocal(addrLocal, LOCAL_MANUAL);
+        const std::optional<CService> addrLocal{Lookup(strAddr, GetListenPort(), fNameLookup)};
+        if (addrLocal.has_value() && addrLocal->IsValid())
+            AddLocal(addrLocal.value(), LOCAL_MANUAL);
         else
             return InitError(ResolveErrMsg("externalip", strAddr));
     }
 
 #if ENABLE_ZMQ
-    g_zmq_notification_interface = CZMQNotificationInterface::Create();
+    g_zmq_notification_interface = CZMQNotificationInterface::Create(
+        [&chainman = node.chainman](CBlock& block, const CBlockIndex& index) {
+            assert(chainman);
+            return chainman->m_blockman.ReadBlockFromDisk(block, index);
+        });
 
     if (g_zmq_notification_interface) {
-        RegisterValidationInterface(g_zmq_notification_interface);
+        RegisterValidationInterface(g_zmq_notification_interface.get());
     }
 #endif
 
     // ********************************************************* Step 7: load block chain
 
+    node.notifications = std::make_unique<KernelNotifications>();
     fReindex = args.GetBoolArg("-reindex", false);
     bool fReindexChainState = args.GetBoolArg("-reindex-chainstate", false);
     ChainstateManager::Options chainman_opts{
         .chainparams = chainparams,
         .datadir = args.GetDataDirNet(),
         .adjusted_time_callback = GetAdjustedTime,
+        .notifications = *node.notifications,
     };
-    Assert(!ApplyArgsManOptions(args, chainman_opts)); // no error can happen, already checked in AppInitParameterInteraction
+    Assert(ApplyArgsManOptions(args, chainman_opts)); // no error can happen, already checked in AppInitParameterInteraction
 
-    node::BlockManager::Options blockman_opts{};
-    Assert(!ApplyArgsManOptions(args, blockman_opts)); // no error can happen, already checked in AppInitParameterInteraction
+    BlockManager::Options blockman_opts{
+        .chainparams = chainman_opts.chainparams,
+        .blocks_dir = args.GetBlocksDirPath(),
+    };
+    Assert(ApplyArgsManOptions(args, blockman_opts)); // no error can happen, already checked in AppInitParameterInteraction
 
     // cache size calculations
     CacheSizes cache_sizes = CalculateCacheSizes(args, g_enabled_filter_types.size());
@@ -1474,8 +1485,9 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         .estimator = node.fee_estimator.get(),
         .check_ratio = chainparams.DefaultConsistencyChecks() ? 1 : 0,
     };
-    if (const auto err{ApplyArgsManOptions(args, chainparams, mempool_opts)}) {
-        return InitError(*err);
+    auto result{ApplyArgsManOptions(args, chainparams, mempool_opts)};
+    if (!result) {
+        return InitError(util::ErrorString(result));
     }
     mempool_opts.check_ratio = std::clamp<int>(mempool_opts.check_ratio, 0, 1'000'000);
 
@@ -1574,9 +1586,13 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     RegisterValidationInterface(node.peerman.get());
 
     // ********************************************************* Step 8: start indexers
+
+    // If reindex-chainstate was specified, delay syncing indexes until ThreadImport has reindexed the chain
+    if (!fReindexChainState) g_indexes_ready_to_sync = true;
     if (args.GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
-        if (const auto error{WITH_LOCK(cs_main, return CheckLegacyTxindex(*Assert(chainman.m_blockman.m_block_tree_db)))}) {
-            return InitError(*error);
+        auto result{WITH_LOCK(cs_main, return CheckLegacyTxindex(*Assert(chainman.m_blockman.m_block_tree_db)))};
+        if (!result) {
+            return InitError(util::ErrorString(result));
         }
 
         g_txindex = std::make_unique<TxIndex>(interfaces::MakeChain(node), cache_sizes.tx_index, false, fReindex);
@@ -1683,7 +1699,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     }
 
     chainman.m_load_block = std::thread(&util::TraceThread, "loadblk", [=, &chainman, &args] {
-        ThreadImport(chainman, vImportFiles, args, ShouldPersistMempool(args) ? MempoolPath(args) : fs::path{});
+        ThreadImport(chainman, vImportFiles, ShouldPersistMempool(args) ? MempoolPath(args) : fs::path{});
     });
 
     // Wait for genesis block to be processed
@@ -1756,13 +1772,14 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     };
 
     for (const std::string& bind_arg : args.GetArgs("-bind")) {
-        CService bind_addr;
+        std::optional<CService> bind_addr;
         const size_t index = bind_arg.rfind('=');
         if (index == std::string::npos) {
-            if (Lookup(bind_arg, bind_addr, default_bind_port, /*fAllowLookup=*/false)) {
-                connOptions.vBinds.push_back(bind_addr);
-                if (IsBadPort(bind_addr.GetPort())) {
-                    InitWarning(BadPortWarning("-bind", bind_addr.GetPort()));
+            bind_addr = Lookup(bind_arg, default_bind_port, /*fAllowLookup=*/false);
+            if (bind_addr.has_value()) {
+                connOptions.vBinds.push_back(bind_addr.value());
+                if (IsBadPort(bind_addr.value().GetPort())) {
+                    InitWarning(BadPortWarning("-bind", bind_addr.value().GetPort()));
                 }
                 continue;
             }
@@ -1770,8 +1787,9 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
             const std::string network_type = bind_arg.substr(index + 1);
             if (network_type == "onion") {
                 const std::string truncated_bind_arg = bind_arg.substr(0, index);
-                if (Lookup(truncated_bind_arg, bind_addr, BaseParams().OnionServiceTargetPort(), false)) {
-                    connOptions.onion_binds.push_back(bind_addr);
+                bind_addr = Lookup(truncated_bind_arg, BaseParams().OnionServiceTargetPort(), false);
+                if (bind_addr.has_value()) {
+                    connOptions.onion_binds.push_back(bind_addr.value());
                     continue;
                 }
             }
@@ -1849,11 +1867,11 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     const std::string& i2psam_arg = args.GetArg("-i2psam", "");
     if (!i2psam_arg.empty()) {
-        CService addr;
-        if (!Lookup(i2psam_arg, addr, 7656, fNameLookup) || !addr.IsValid()) {
+        const std::optional<CService> addr{Lookup(i2psam_arg, 7656, fNameLookup)};
+        if (!addr.has_value() || !addr->IsValid()) {
             return InitError(strprintf(_("Invalid -i2psam address or hostname: '%s'"), i2psam_arg));
         }
-        SetProxy(NET_I2P, Proxy{addr});
+        SetProxy(NET_I2P, Proxy{addr.value()});
     } else {
         if (args.IsArgSet("-onlynet") && IsReachable(NET_I2P)) {
             return InitError(
