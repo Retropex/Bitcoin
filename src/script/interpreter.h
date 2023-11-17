@@ -141,6 +141,9 @@ enum : uint32_t {
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = (1U << 20),
 
+    // Relay policy: Disallow ordinal inscriptions for relay; CLI arg -ordisrespector=1 (default)
+    SCRIPT_VERIFY_DISCOURAGE_INSCRIPTIONS = (1U << 21),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER

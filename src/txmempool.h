@@ -446,6 +446,7 @@ public:
     const std::optional<unsigned> m_max_datacarrier_bytes;
     const bool m_require_standard;
     const bool m_full_rbf;
+    const bool m_allow_inscriptions;  // if true, -ordisrespector=0
 
     const Limits m_limits;
 

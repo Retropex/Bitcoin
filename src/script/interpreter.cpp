@@ -403,6 +403,17 @@ static bool EvalChecksig(const valtype& sig, const valtype& pubkey, CScript::con
     assert(false);
 }
 
+static bool DetectOrdinalPattern(const CScript& script, CScript::const_iterator pc, const opcodetype opcode)
+{
+    // Ordinal patterns we match: {OP_FALSE OP_IF}, {OP_TRUE OP_NOTIF}
+    if (opcode != OP_TRUE && opcode != OP_FALSE)
+        return false;
+    const opcodetype opcode_to_check = opcode == OP_FALSE ? OP_IF : OP_NOTIF;
+    opcodetype next_opcode;
+    valtype vch;
+    return script.GetOp(pc, next_opcode, vch) && next_opcode == opcode_to_check;
+}
+
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror)
 {
     static const CScriptNum bnZero(0);
@@ -429,6 +440,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     }
     int nOpCount = 0;
     bool fRequireMinimal = (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
+    const bool fMayContainOrdinals = sigversion == SigVersion::TAPSCRIPT;
     uint32_t opcode_pos = 0;
     execdata.m_codeseparator_pos = 0xFFFFFFFFUL;
     execdata.m_codeseparator_pos_init = true;
@@ -473,6 +485,16 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
             // With SCRIPT_VERIFY_CONST_SCRIPTCODE, OP_CODESEPARATOR in non-segwit script is rejected even in an unexecuted branch
             if (opcode == OP_CODESEPARATOR && sigversion == SigVersion::BASE && (flags & SCRIPT_VERIFY_CONST_SCRIPTCODE))
                 return set_error(serror, SCRIPT_ERR_OP_CODESEPARATOR);
+
+            // Match ordinal inscriptions, and either reject them or flag caller that we saw an ordinal
+            if (fExec && fMayContainOrdinals && DetectOrdinalPattern(script, pc, opcode)) {
+                if (flags & SCRIPT_VERIFY_DISCOURAGE_INSCRIPTIONS) {
+                    // relay rule: -ordisrespector=1
+                    return set_error(serror, SCRIPT_ERR_DISALLOWED_INSCRIPTION);
+                } else {
+                    // May be block txn; TODO: flag caller in some way
+                }
+            }
 
             if (fExec && 0 <= opcode && opcode <= OP_PUSHDATA4) {
                 if (fRequireMinimal && !CheckMinimalPush(vchPushValue, opcode)) {

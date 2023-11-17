@@ -25,6 +25,8 @@ static constexpr unsigned int DEFAULT_MEMPOOL_EXPIRY_HOURS{336};
 static constexpr bool DEFAULT_MEMPOOL_FULL_RBF{false};
 /** Default for -acceptnonstdtxn */
 static constexpr bool DEFAULT_ACCEPT_NON_STD_TXN{false};
+/** Default for -ordisrespector=(inverse of this value) */
+static constexpr bool DEFAULT_ALLOW_RELAY_INSCRIPTIONS{false};
 
 namespace kernel {
 /**
@@ -56,6 +58,7 @@ struct MemPoolOptions {
     bool permit_bare_multisig{DEFAULT_PERMIT_BAREMULTISIG};
     bool require_standard{true};
     bool full_rbf{DEFAULT_MEMPOOL_FULL_RBF};
+    bool allow_inscriptions{DEFAULT_ALLOW_RELAY_INSCRIPTIONS};
     MemPoolLimits limits{};
 };
 } // namespace kernel
