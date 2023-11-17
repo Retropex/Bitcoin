@@ -6,7 +6,6 @@
 #include <addrman.h>
 #include <addrman_impl.h>
 #include <chainparams.h>
-#include <common/args.h>
 #include <merkleblock.h>
 #include <random.h>
 #include <test/fuzz/FuzzedDataProvider.h>
@@ -16,7 +15,7 @@
 #include <test/util/setup_common.h>
 #include <time.h>
 #include <util/asmap.h>
-#include <util/chaintype.h>
+#include <util/system.h>
 
 #include <cassert>
 #include <cstdint>
@@ -35,7 +34,7 @@ int32_t GetCheckRatio()
 
 void initialize_addrman()
 {
-    static const auto testing_setup = MakeNoLogFileContext<>(ChainType::REGTEST);
+    static const auto testing_setup = MakeNoLogFileContext<>(CBaseChainParams::REGTEST);
     g_setup = testing_setup.get();
 }
 

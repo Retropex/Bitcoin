@@ -9,7 +9,6 @@
 #include <protocol.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
-#include <util/chaintype.h>
 
 #include <cassert>
 #include <cstdint>
@@ -19,7 +18,7 @@
 
 void initialize_p2p_transport_serialization()
 {
-    SelectParams(ChainType::REGTEST);
+    SelectParams(CBaseChainParams::REGTEST);
 }
 
 FUZZ_TARGET_INIT(p2p_transport_serialization, initialize_p2p_transport_serialization)

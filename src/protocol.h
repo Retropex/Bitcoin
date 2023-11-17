@@ -134,8 +134,7 @@ extern const char* GETADDR;
 /**
  * The mempool message requests the TXIDs of transactions that the receiving
  * node has verified as valid but which have not yet appeared in a block.
- * @since protocol version 60002 as described by BIP35.
- *   Only available with service bit NODE_BLOOM, see also BIP111.
+ * @since protocol version 60002.
  */
 extern const char* MEMPOOL;
 /**
@@ -279,6 +278,8 @@ enum ServiceFlags : uint64_t {
     // set by all Bitcoin Core non pruned nodes, and is unset by SPV clients or other light clients.
     NODE_NETWORK = (1 << 0),
     // NODE_BLOOM means the node is capable and willing to handle bloom-filtered connections.
+    // Bitcoin Core nodes used to support this by default, without advertising this bit,
+    // but no longer do as of protocol version 70011 (= NO_BLOOM_VERSION)
     NODE_BLOOM = (1 << 2),
     // NODE_WITNESS indicates that a node can be asked for blocks and transactions including
     // witness data.

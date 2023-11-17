@@ -9,9 +9,6 @@
 #include <any>
 #include <memory>
 #include <string>
-#include "statsd_client.h"
-
-extern statsd::StatsdClient statsClient;
 
 //! Default value for -daemon option
 static constexpr bool DEFAULT_DAEMON = false;

@@ -5,7 +5,6 @@
 #include <bench/bench.h>
 #include <logging.h>
 #include <test/util/setup_common.h>
-#include <util/chaintype.h>
 
 // All but 2 of the benchmarks should have roughly similar performance:
 //
@@ -19,7 +18,7 @@ static void Logging(benchmark::Bench& bench, const std::vector<const char*>& ext
     LogInstance().DisableCategory(BCLog::LogFlags::ALL);
 
     TestingSetup test_setup{
-        ChainType::REGTEST,
+        CBaseChainParams::REGTEST,
         extra_args,
     };
 

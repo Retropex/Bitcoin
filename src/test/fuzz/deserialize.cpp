@@ -9,7 +9,6 @@
 #include <blockfilter.h>
 #include <chain.h>
 #include <coins.h>
-#include <common/args.h>
 #include <compressor.h>
 #include <consensus/merkle.h>
 #include <key.h>
@@ -26,6 +25,7 @@
 #include <streams.h>
 #include <test/util/setup_common.h>
 #include <undo.h>
+#include <util/system.h>
 #include <version.h>
 
 #include <exception>

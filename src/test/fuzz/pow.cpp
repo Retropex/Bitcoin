@@ -9,7 +9,6 @@
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
-#include <util/chaintype.h>
 #include <util/check.h>
 #include <util/overflow.h>
 
@@ -20,7 +19,7 @@
 
 void initialize_pow()
 {
-    SelectParams(ChainType::MAIN);
+    SelectParams(CBaseChainParams::MAIN);
 }
 
 FUZZ_TARGET_INIT(pow, initialize_pow)

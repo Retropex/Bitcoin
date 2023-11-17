@@ -5,11 +5,9 @@
 #include <bench/bench.h>
 #include <interfaces/chain.h>
 #include <node/context.h>
-#include <policy/policy.h>
 #include <wallet/coinselection.h>
 #include <wallet/spend.h>
 #include <wallet/wallet.h>
-#include <wallet/test/util.h>
 
 #include <set>
 
@@ -21,7 +19,7 @@ using wallet::CWallet;
 using wallet::CWalletTx;
 using wallet::CoinEligibilityFilter;
 using wallet::CoinSelectionParams;
-using wallet::CreateMockableWalletDatabase;
+using wallet::CreateDummyWalletDatabase;
 using wallet::OutputGroup;
 using wallet::SelectCoinsBnB;
 using wallet::TxStateInactive;
@@ -47,7 +45,7 @@ static void CoinSelection(benchmark::Bench& bench)
 {
     NodeContext node;
     auto chain = interfaces::MakeChain(node);
-    CWallet wallet(chain.get(), "", CreateMockableWalletDatabase());
+    CWallet wallet(chain.get(), "", CreateDummyWalletDatabase());
     std::vector<std::unique_ptr<CWalletTx>> wtxs;
     LOCK(wallet.cs_wallet);
 
@@ -117,7 +115,7 @@ static void BnBExhaustion(benchmark::Bench& bench)
     bench.run([&] {
         // Benchmark
         CAmount target = make_hard_case(17, utxo_pool);
-        SelectCoinsBnB(utxo_pool, target, 0, MAX_STANDARD_TX_WEIGHT); // Should exhaust
+        SelectCoinsBnB(utxo_pool, target, 0); // Should exhaust
 
         // Cleanup
         utxo_pool.clear();

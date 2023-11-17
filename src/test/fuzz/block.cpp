@@ -11,7 +11,6 @@
 #include <pubkey.h>
 #include <streams.h>
 #include <test/fuzz/fuzz.h>
-#include <util/chaintype.h>
 #include <validation.h>
 #include <version.h>
 
@@ -20,7 +19,7 @@
 
 void initialize_block()
 {
-    SelectParams(ChainType::REGTEST);
+    SelectParams(CBaseChainParams::REGTEST);
 }
 
 FUZZ_TARGET_INIT(block, initialize_block)

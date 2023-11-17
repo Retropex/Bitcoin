@@ -5,25 +5,24 @@
 #ifndef BITCOIN_TEST_UTIL_SETUP_COMMON_H
 #define BITCOIN_TEST_UTIL_SETUP_COMMON_H
 
-#include <common/args.h>
+#include <chainparamsbase.h>
 #include <key.h>
 #include <node/caches.h>
-#include <node/context.h> // IWYU pragma: export
+#include <node/context.h>
 #include <primitives/transaction.h>
 #include <pubkey.h>
 #include <random.h>
 #include <stdexcept>
-#include <util/chaintype.h>
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/string.h>
+#include <util/system.h>
 #include <util/vector.h>
 
 #include <functional>
 #include <type_traits>
 #include <vector>
 
-class CFeeRate;
 class Chainstate;
 
 /** This is connected to the logger. Can be used to redirect logs to any other log */
@@ -80,7 +79,7 @@ static constexpr CAmount CENT{1000000};
 struct BasicTestingSetup {
     node::NodeContext m_node; // keep as first member to be destructed last
 
-    explicit BasicTestingSetup(const ChainType chainType = ChainType::MAIN, const std::vector<const char*>& extra_args = {});
+    explicit BasicTestingSetup(const std::string& chainName = CBaseChainParams::MAIN, const std::vector<const char*>& extra_args = {});
     ~BasicTestingSetup();
 
     const fs::path m_path_root;
@@ -93,21 +92,21 @@ struct BasicTestingSetup {
  */
 struct ChainTestingSetup : public BasicTestingSetup {
     node::CacheSizes m_cache_sizes{};
-    bool m_coins_db_in_memory{true};
-    bool m_block_tree_db_in_memory{true};
 
-    explicit ChainTestingSetup(const ChainType chainType = ChainType::MAIN, const std::vector<const char*>& extra_args = {});
+    explicit ChainTestingSetup(const std::string& chainName = CBaseChainParams::MAIN, const std::vector<const char*>& extra_args = {});
     ~ChainTestingSetup();
-
-    // Supplies a chainstate, if one is needed
-    void LoadVerifyActivateChainstate();
 };
 
 /** Testing setup that configures a complete environment.
  */
 struct TestingSetup : public ChainTestingSetup {
+    bool m_coins_db_in_memory{true};
+    bool m_block_tree_db_in_memory{true};
+
+    void LoadVerifyActivateChainstate();
+
     explicit TestingSetup(
-        const ChainType chainType = ChainType::MAIN,
+        const std::string& chainName = CBaseChainParams::MAIN,
         const std::vector<const char*>& extra_args = {},
         const bool coins_db_in_memory = true,
         const bool block_tree_db_in_memory = true);
@@ -116,7 +115,7 @@ struct TestingSetup : public ChainTestingSetup {
 /** Identical to TestingSetup, but chain set to regtest */
 struct RegTestingSetup : public TestingSetup {
     RegTestingSetup()
-        : TestingSetup{ChainType::REGTEST} {}
+        : TestingSetup{CBaseChainParams::REGTEST} {}
 };
 
 class CBlock;
@@ -128,7 +127,7 @@ class CScript;
  */
 struct TestChain100Setup : public TestingSetup {
     TestChain100Setup(
-        const ChainType chain_type = ChainType::REGTEST,
+        const std::string& chain_name = CBaseChainParams::REGTEST,
         const std::vector<const char*>& extra_args = {},
         const bool coins_db_in_memory = true,
         const bool block_tree_db_in_memory = true);
@@ -186,17 +185,6 @@ struct TestChain100Setup : public TestingSetup {
      */
     std::vector<CTransactionRef> PopulateMempool(FastRandomContext& det_rand, size_t num_transactions, bool submit);
 
-    /** Mock the mempool minimum feerate by adding a transaction and calling TrimToSize(0),
-     * simulating the mempool "reaching capacity" and evicting by descendant feerate.  Note that
-     * this clears the mempool, and the new minimum feerate will depend on the maximum feerate of
-     * transactions removed, so this must be called while the mempool is empty.
-     *
-     * @param target_feerate    The new mempool minimum feerate after this function returns.
-     *                          Must be above max(incremental feerate, min relay feerate),
-     *                          or 1sat/vB with default settings.
-     */
-    void MockMempoolMinFee(const CFeeRate& target_feerate);
-
     std::vector<CTransactionRef> m_coinbase_txns; // For convenience, coinbase transactions
     CKey coinbaseKey; // private/public key needed to spend coinbase transactions
 };
@@ -206,7 +194,7 @@ struct TestChain100Setup : public TestingSetup {
  * be used in "hot loops", for example fuzzing or benchmarking.
  */
 template <class T = const BasicTestingSetup>
-std::unique_ptr<T> MakeNoLogFileContext(const ChainType chain_type = ChainType::REGTEST, const std::vector<const char*>& extra_args = {})
+std::unique_ptr<T> MakeNoLogFileContext(const std::string& chain_name = CBaseChainParams::REGTEST, const std::vector<const char*>& extra_args = {})
 {
     const std::vector<const char*> arguments = Cat(
         {
@@ -215,7 +203,7 @@ std::unique_ptr<T> MakeNoLogFileContext(const ChainType chain_type = ChainType::
         },
         extra_args);
 
-    return std::make_unique<T>(chain_type, arguments);
+    return std::make_unique<T>(chain_name, arguments);
 }
 
 CBlock getBlock13b8a();

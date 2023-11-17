@@ -8,7 +8,6 @@
 #include <rpc/blockchain.h>
 #include <streams.h>
 #include <test/util/setup_common.h>
-#include <util/chaintype.h>
 #include <validation.h>
 
 #include <univalue.h>
@@ -16,7 +15,7 @@
 namespace {
 
 struct TestBlockAndIndex {
-    const std::unique_ptr<const TestingSetup> testing_setup{MakeNoLogFileContext<const TestingSetup>(ChainType::MAIN)};
+    const std::unique_ptr<const TestingSetup> testing_setup{MakeNoLogFileContext<const TestingSetup>(CBaseChainParams::MAIN)};
     CBlock block{};
     uint256 blockHash{};
     CBlockIndex blockindex{};

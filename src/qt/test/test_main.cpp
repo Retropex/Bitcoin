@@ -14,7 +14,6 @@
 #include <qt/test/rpcnestedtests.h>
 #include <qt/test/uritests.h>
 #include <test/util/setup_common.h>
-#include <util/chaintype.h>
 
 #ifdef ENABLE_WALLET
 #include <qt/test/addressbooktests.h>
@@ -58,7 +57,7 @@ int main(int argc, char* argv[])
     //
     // All tests must use their own testing setup (if needed).
     fs::create_directories([] {
-        BasicTestingSetup dummy{ChainType::REGTEST};
+        BasicTestingSetup dummy{CBaseChainParams::REGTEST};
         return gArgs.GetDataDirNet() / "blocks";
     }());
 
@@ -70,9 +69,6 @@ int main(int argc, char* argv[])
     gArgs.ForceSetArg("-fixedseeds", "0");
     gArgs.ForceSetArg("-upnp", "0");
     gArgs.ForceSetArg("-natpmp", "0");
-
-    std::string error;
-    if (!gArgs.ReadConfigFiles(error, true)) QWARN(error.c_str());
 
     // Prefer the "minimal" platform for the test instead of the normal default
     // platform ("xcb", "windows", or "cocoa") so tests can't unintentionally

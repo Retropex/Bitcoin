@@ -32,7 +32,7 @@ static void BenchTimeMillis(benchmark::Bench& bench)
 static void BenchTimeMillisSys(benchmark::Bench& bench)
 {
     bench.run([&] {
-        (void)TicksSinceEpoch<std::chrono::milliseconds>(SystemClock::now());
+        (void)GetTimeMillis();
     });
 }
 

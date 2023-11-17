@@ -93,7 +93,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         confirmed - txout created will be confirmed in the blockchain;
                     unconfirmed otherwise.
         """
-        tx = self.wallet.send_to(from_node=node, scriptPubKey=scriptPubKey or self.wallet.get_scriptPubKey(), amount=amount)
+        txid, n = self.wallet.send_to(from_node=node, scriptPubKey=scriptPubKey or self.wallet.get_scriptPubKey(), amount=amount)
 
         if confirmed:
             mempool_size = len(node.getrawmempool())
@@ -105,7 +105,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
                 assert new_size < mempool_size
                 mempool_size = new_size
 
-        return self.wallet.get_utxo(txid=tx["txid"], vout=tx["sent_vout"])
+        return self.wallet.get_utxo(txid=txid, vout=n)
 
     def test_simple_doublespend(self):
         """Simple doublespend"""

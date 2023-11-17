@@ -8,19 +8,20 @@
 #include <node/blockstorage.h>
 #include <validation.h>
 
-using node::BlockManager;
+using node::ReadBlockFromDisk;
+using node::UndoReadFromDisk;
 
-bool ComputeFilter(BlockFilterType filter_type, const CBlockIndex& block_index, BlockFilter& filter, const BlockManager& blockman)
+bool ComputeFilter(BlockFilterType filter_type, const CBlockIndex* block_index, BlockFilter& filter)
 {
     LOCK(::cs_main);
 
     CBlock block;
-    if (!blockman.ReadBlockFromDisk(block, block_index.GetBlockPos())) {
+    if (!ReadBlockFromDisk(block, block_index->GetBlockPos(), Params().GetConsensus())) {
         return false;
     }
 
     CBlockUndo block_undo;
-    if (block_index.nHeight > 0 && !blockman.UndoReadFromDisk(block_undo, block_index)) {
+    if (block_index->nHeight > 0 && !UndoReadFromDisk(block_undo, block_index)) {
         return false;
     }
 

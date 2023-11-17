@@ -5,9 +5,7 @@
 
 #include <protocol.h>
 
-#include <common/system.h>
-
-#include <atomic>
+#include <util/system.h>
 
 static std::atomic<bool> g_initial_block_download_completed(false);
 

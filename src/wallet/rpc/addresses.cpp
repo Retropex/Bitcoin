@@ -218,8 +218,7 @@ RPCHelpMan addmultisigaddress()
                 "Each key is a Bitcoin address or hex-encoded public key.\n"
                 "This functionality is only intended for use with non-watchonly addresses.\n"
                 "See `importaddress` for watchonly p2sh address support.\n"
-                "If 'label' is specified, assign address to that label.\n"
-                "Note: This command is only compatible with legacy wallets.\n",
+                "If 'label' is specified, assign address to that label.\n",
                 {
                     {"nrequired", RPCArg::Type::NUM, RPCArg::Optional::NO, "The number of required signatures out of the n keys or addresses."},
                     {"keys", RPCArg::Type::ARR, RPCArg::Optional::NO, "The bitcoin addresses or hex-encoded public keys",
@@ -608,9 +607,7 @@ RPCHelpMan getaddressinfo()
         if (const std::unique_ptr<CKeyMetadata> meta = spk_man->GetMetadata(dest)) {
             ret.pushKV("timestamp", meta->nCreateTime);
             if (meta->has_key_origin) {
-                // In legacy wallets hdkeypath has always used an apostrophe for
-                // hardened derivation. Perhaps some external tool depends on that.
-                ret.pushKV("hdkeypath", WriteHDKeypath(meta->key_origin.path, /*apostrophe=*/!desc_spk_man));
+                ret.pushKV("hdkeypath", WriteHDKeypath(meta->key_origin.path));
                 ret.pushKV("hdseedid", meta->hd_seed_id.GetHex());
                 ret.pushKV("hdmasterfingerprint", HexStr(meta->key_origin.fingerprint));
             }

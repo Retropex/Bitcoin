@@ -4,10 +4,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <policy/fees.h>
-#include <boost/lexical_cast.hpp>
-#include <statsd_client.h>
+
 #include <clientversion.h>
-#include <common/system.h>
 #include <consensus/amount.h>
 #include <kernel/mempool_entry.h>
 #include <logging.h>
@@ -21,6 +19,7 @@
 #include <uint256.h>
 #include <util/fs.h>
 #include <util/serfloat.h>
+#include <util/system.h>
 #include <util/time.h>
 
 #include <algorithm>
@@ -32,8 +31,6 @@
 #include <exception>
 #include <stdexcept>
 #include <utility>
-
-extern statsd::StatsdClient statsClient;
 
 static constexpr double INF_FEERATE = 1e99;
 
@@ -678,23 +675,13 @@ void CBlockPolicyEstimator::processBlock(unsigned int nBlockHeight,
         LogPrint(BCLog::ESTIMATEFEE, "Blockpolicy first recorded height %u\n", firstRecordedHeight);
     }
 
+
     LogPrint(BCLog::ESTIMATEFEE, "Blockpolicy estimates updated by %u of %u block txs, since last block %u of %u tracked, mempool map size %u, max target %u from %s\n",
              countedTxs, entries.size(), trackedTxs, trackedTxs + untrackedTxs, mapMemPoolTxs.size(),
              MaxUsableEstimate(), HistoricalBlockSpan() > BlockSpan() ? "historical" : "current");
 
     trackedTxs = 0;
     untrackedTxs = 0;
-
-    // emit stats for estimated fees
-    for (unsigned int i = 1; i <= 1008; i++)
-    {
-        std::string feeName = "estimates.fee.block" + boost::lexical_cast<std::string>(i);
-        CFeeRate feeEstimate = estimateSmartFee(i, NULL, true);
-        if (feeEstimate.GetFeePerK() > 0)
-            statsClient.gauge(feeName, feeEstimate.GetFeePerK());
-        else
-            statsClient.gauge(feeName, 0);
-    }
 }
 
 CFeeRate CBlockPolicyEstimator::estimateFee(int confTarget) const
@@ -852,7 +839,8 @@ double CBlockPolicyEstimator::estimateConservativeFee(unsigned int doubleTarget,
  */
 CFeeRate CBlockPolicyEstimator::estimateSmartFee(int confTarget, FeeCalculation *feeCalc, bool conservative) const
 {
-    // remove lock so that we can call this inside of processBlock()
+    LOCK(m_cs_fee_estimator);
+
     if (feeCalc) {
         feeCalc->desiredTarget = confTarget;
         feeCalc->returnedTarget = confTarget;

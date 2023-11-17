@@ -9,9 +9,7 @@
 
 #include <chainparams.h>
 #include <clientversion.h>
-#include <common/args.h>
 #include <common/init.h>
-#include <common/system.h>
 #include <common/url.h>
 #include <compat/compat.h>
 #include <init.h>
@@ -26,6 +24,7 @@
 #include <util/strencodings.h>
 #include <util/syscall_sandbox.h>
 #include <util/syserror.h>
+#include <util/system.h>
 #include <util/threadnames.h>
 #include <util/tokenpipe.h>
 #include <util/translation.h>
@@ -248,7 +247,7 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
 MAIN_FUNCTION
 {
 #ifdef WIN32
-    common::WinCmdLineArgs winArgs;
+    util::WinCmdLineArgs winArgs;
     std::tie(argc, argv) = winArgs.get();
 #endif
 

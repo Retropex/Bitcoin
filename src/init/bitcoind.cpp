@@ -2,7 +2,6 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <common/args.h>
 #include <interfaces/chain.h>
 #include <interfaces/echo.h>
 #include <interfaces/init.h>
@@ -10,6 +9,7 @@
 #include <interfaces/wallet.h>
 #include <node/context.h>
 #include <util/check.h>
+#include <util/system.h>
 
 #include <memory>
 

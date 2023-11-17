@@ -43,8 +43,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "statsd_client.h"
-
 class AddrMan;
 class BanMan;
 class CNode;
@@ -389,8 +387,6 @@ public:
     Mutex cs_vRecv;
 
     uint64_t nRecvBytes GUARDED_BY(cs_vRecv){0};
-    mapMsgTypeSize mapSendBytesPerMsgType GUARDED_BY(cs_vSend);
-    mapMsgTypeSize mapRecvBytesPerMsgType GUARDED_BY(cs_vRecv);
 
     std::atomic<std::chrono::seconds> m_last_send{0s};
     std::atomic<std::chrono::seconds> m_last_recv{0s};
@@ -647,6 +643,9 @@ private:
     CService addrLocal GUARDED_BY(m_addr_local_mutex);
     mutable Mutex m_addr_local_mutex;
 
+    mapMsgTypeSize mapSendBytesPerMsgType GUARDED_BY(cs_vSend);
+    mapMsgTypeSize mapRecvBytesPerMsgType GUARDED_BY(cs_vRecv);
+
     /**
      * If an I2P session is created per connection (for outbound transient I2P
      * connections) then it is stored here so that it can be destroyed when the
@@ -814,8 +813,6 @@ public:
     };
 
     // Addrman functions
-    size_t GetAddressCount() const;
-
     /**
      * Return all or many randomly selected addresses, optionally by network.
      *
@@ -824,7 +821,6 @@ public:
      * @param[in] network        Select only addresses of this network (nullopt = all).
      */
     std::vector<CAddress> GetAddresses(size_t max_addresses, size_t max_pct, std::optional<Network> network) const;
-
     /**
      * Cache is used to minimize topology leaks, so it should
      * be used for all non-trusted calls, for example, p2p.
@@ -869,7 +865,6 @@ public:
     bool AddConnection(const std::string& address, ConnectionType conn_type) EXCLUSIVE_LOCKS_REQUIRED(!m_unused_i2p_sessions_mutex);
 
     size_t GetNodeCount(ConnectionDirection) const;
-    uint32_t GetMappedAS(const CNetAddr& addr) const;
     void GetNodeStats(std::vector<CNodeStats>& vstats) const;
     bool DisconnectNode(const std::string& node);
     bool DisconnectNode(const CSubNet& subnet);
@@ -1168,27 +1163,6 @@ private:
      *  in excess of m_max_outbound_full_relay
      *  This takes the place of a feeler connection */
     std::atomic_bool m_try_another_outbound_peer;
-
-    std::string RejectCodeToString(const char& code)
-    {
-        if (code == 0x01)
-            return "malformed";
-        if (code == 0x10)
-            return "invalid";
-        if (code == 0x11)
-            return "obsolete";
-        if (code == 0x12)
-            return "duplicate";
-        if (code == 0x40)
-            return "nonstandard";
-        if (code == 0x41)
-            return "dust";
-        if (code == 0x42)
-            return "insufficientfee";
-        if (code == 0x43)
-            return "checkpoint";
-        return "";
-    }
 
     /** flag for initiating extra block-relay-only peer connections.
      *  this should only be enabled after initial chain sync has occurred,

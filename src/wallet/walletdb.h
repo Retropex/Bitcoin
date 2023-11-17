@@ -7,7 +7,6 @@
 #define BITCOIN_WALLET_WALLETDB_H
 
 #include <script/sign.h>
-#include <script/standard.h>
 #include <wallet/db.h>
 #include <wallet/walletutil.h>
 #include <key.h>
@@ -265,10 +264,10 @@ public:
     bool WriteLockedUTXO(const COutPoint& output);
     bool EraseLockedUTXO(const COutPoint& output);
 
-    bool WriteAddressPreviouslySpent(const CTxDestination& dest, bool previously_spent);
-    bool WriteAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& receive_request);
-    bool EraseAddressReceiveRequest(const CTxDestination& dest, const std::string& id);
-    bool EraseAddressData(const CTxDestination& dest);
+    /// Write destination data key,value tuple to database
+    bool WriteDestData(const std::string &address, const std::string &key, const std::string &value);
+    /// Erase destination data tuple from wallet database
+    bool EraseDestData(const std::string &address, const std::string &key);
 
     bool WriteActiveScriptPubKeyMan(uint8_t type, const uint256& id, bool internal);
     bool EraseActiveScriptPubKeyMan(uint8_t type, bool internal);
@@ -305,6 +304,13 @@ using KeyFilterFn = std::function<bool(const std::string&)>;
 
 //! Unserialize a given Key-Value pair and load it into the wallet
 bool ReadKeyValue(CWallet* pwallet, DataStream& ssKey, CDataStream& ssValue, std::string& strType, std::string& strErr, const KeyFilterFn& filter_fn = nullptr);
+
+/** Return object for accessing dummy database with no read/write capabilities. */
+std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase();
+
+/** Return object for accessing temporary in-memory database. */
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase(DatabaseOptions& options);
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase();
 } // namespace wallet
 
 #endif // BITCOIN_WALLET_WALLETDB_H

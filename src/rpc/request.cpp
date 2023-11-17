@@ -7,12 +7,11 @@
 
 #include <util/fs.h>
 
-#include <common/args.h>
-#include <logging.h>
 #include <random.h>
 #include <rpc/protocol.h>
 #include <util/fs_helpers.h>
 #include <util/strencodings.h>
+#include <util/system.h>
 
 #include <fstream>
 #include <stdexcept>
@@ -88,7 +87,7 @@ bool GenerateAuthCookie(std::string *cookie_out)
     std::string cookie = COOKIEAUTH_USER + ":" + HexStr(rand_pwd);
 
     /** the umask determines what permissions are used to create this file -
-     * these are set to 0077 in common/system.cpp.
+     * these are set to 0077 in util/system.cpp.
      */
     std::ofstream file;
     fs::path filepath_tmp = GetAuthCookieFile(true);
@@ -165,10 +164,10 @@ void JSONRPCRequest::parse(const UniValue& valRequest)
     const UniValue& request = valRequest.get_obj();
 
     // Parse id now so errors from here on will have the id
-    id = request.find_value("id");
+    id = find_value(request, "id");
 
     // Parse method
-    const UniValue& valMethod{request.find_value("method")};
+    UniValue valMethod = find_value(request, "method");
     if (valMethod.isNull())
         throw JSONRPCError(RPC_INVALID_REQUEST, "Missing method");
     if (!valMethod.isStr())
@@ -181,7 +180,7 @@ void JSONRPCRequest::parse(const UniValue& valRequest)
         LogPrint(BCLog::RPC, "ThreadRPCServer method=%s user=%s\n", SanitizeString(strMethod), this->authUser);
 
     // Parse params
-    const UniValue& valParams{request.find_value("params")};
+    UniValue valParams = find_value(request, "params");
     if (valParams.isArray() || valParams.isObject())
         params = valParams;
     else if (valParams.isNull())

@@ -10,13 +10,13 @@
 #include <consensus/merkle.h>
 #include <consensus/params.h>
 #include <hash.h>
+#include <chainparamsbase.h>
 #include <logging.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <uint256.h>
-#include <util/chaintype.h>
 #include <util/strencodings.h>
 
 #include <algorithm>
@@ -70,7 +70,7 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
 class CMainParams : public CChainParams {
 public:
     CMainParams() {
-        m_chain_type = ChainType::MAIN;
+        strNetworkID = CBaseChainParams::MAIN;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
@@ -193,7 +193,7 @@ public:
 class CTestNetParams : public CChainParams {
 public:
     CTestNetParams() {
-        m_chain_type = ChainType::TESTNET;
+        strNetworkID = CBaseChainParams::TESTNET;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
@@ -329,7 +329,7 @@ public:
             vSeeds = *options.seeds;
         }
 
-        m_chain_type = ChainType::SIGNET;
+        strNetworkID = CBaseChainParams::SIGNET;
         consensus.signet_blocks = true;
         consensus.signet_challenge.assign(bin.begin(), bin.end());
         consensus.nSubsidyHalvingInterval = 210000;
@@ -398,7 +398,7 @@ class CRegTestParams : public CChainParams
 public:
     explicit CRegTestParams(const RegTestOptions& opts)
     {
-        m_chain_type = ChainType::REGTEST;
+        strNetworkID =  CBaseChainParams::REGTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 150;

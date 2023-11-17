@@ -13,7 +13,6 @@
 #include <addrman.h>
 #include <banman.h>
 #include <clientversion.h>
-#include <common/args.h>
 #include <compat/compat.h>
 #include <consensus/consensus.h>
 #include <crypto/sha256.h>
@@ -31,6 +30,7 @@
 #include <util/sock.h>
 #include <util/strencodings.h>
 #include <util/syscall_sandbox.h>
+#include <util/system.h>
 #include <util/thread.h>
 #include <util/threadinterrupt.h>
 #include <util/trace.h>
@@ -58,8 +58,6 @@
 #include <unordered_map>
 
 #include <math.h>
-
-statsd::StatsdClient statsClient;
 
 /** Maximum number of block-relay-only anchor connections */
 static constexpr size_t MAX_BLOCK_RELAY_ONLY_ANCHORS = 2;
@@ -132,10 +130,14 @@ uint16_t GetListenPort()
 {
     // If -bind= is provided with ":port" part, use that (first one if multiple are provided).
     for (const std::string& bind_arg : gArgs.GetArgs("-bind")) {
+        CService bind_addr;
         constexpr uint16_t dummy_port = 0;
 
-        const std::optional<CService> bind_addr{Lookup(bind_arg, dummy_port, /*fAllowLookup=*/false)};
-        if (bind_addr.has_value() && bind_addr->GetPort() != dummy_port) return bind_addr->GetPort();
+        if (Lookup(bind_arg, bind_addr, dummy_port, /*fAllowLookup=*/false)) {
+            if (bind_addr.GetPort() != dummy_port) {
+                return bind_addr.GetPort();
+            }
+        }
     }
 
     // Otherwise, if -whitebind= without NetPermissionFlags::NoBan is provided, use that
@@ -459,9 +461,9 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
     const uint16_t default_port{pszDest != nullptr ? Params().GetDefaultPort(pszDest) :
                                                      Params().GetDefaultPort()};
     if (pszDest) {
-        const std::vector<CService> resolved{Lookup(pszDest, default_port, fNameLookup && !HaveNameProxy(), 256)};
-        if (!resolved.empty()) {
-            const CService& rnd{resolved[GetRand(resolved.size())]};
+        std::vector<CService> resolved;
+        if (Lookup(pszDest, resolved,  default_port, fNameLookup && !HaveNameProxy(), 256) && !resolved.empty()) {
+            const CService rnd{resolved[GetRand(resolved.size())]};
             addrConnect = CAddress{MaybeFlipIPv6toCJDNS(rnd), NODE_NONE};
             if (!addrConnect.IsValid()) {
                 LogPrint(BCLog::NET, "Resolver returned invalid address %s for %s\n", addrConnect.ToStringAddrPort(), pszDest);
@@ -576,7 +578,6 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
                                  .recv_flood_size = nReceiveFloodSize,
                              });
     pnode->AddRef();
-    statsClient.inc("peers.connect", 1.0f);
 
     // We're making a new connection, harvest entropy from the time (and our peer count)
     RandAddEvent((uint32_t)id);
@@ -590,7 +591,6 @@ void CNode::CloseSocketDisconnect()
     LOCK(m_sock_mutex);
     if (m_sock) {
         LogPrint(BCLog::NET, "disconnecting peer=%d\n", id);
-        statsClient.inc("peers.disconnect", 1.0f);
         m_sock.reset();
     }
     m_i2p_sam_session.reset();
@@ -704,7 +704,6 @@ bool CNode::ReceiveMsgBytes(Span<const uint8_t> msg_bytes, bool& complete)
             }
             assert(i != mapRecvBytesPerMsgType.end());
             i->second += msg.m_raw_message_size;
-            statsClient.count("bandwidth.message." + std::string(msg.m_type) + ".bytesReceived", msg.m_raw_message_size, 1.0f);
 
             // push the message to the process queue,
             vRecvMsg.push_back(std::move(msg));
@@ -934,7 +933,6 @@ bool CConnman::AttemptToEvictConnection()
     for (CNode* pnode : m_nodes) {
         if (pnode->GetId() == *node_id_to_evict) {
             LogPrint(BCLog::NET, "selected %s connection for eviction peer=%d; disconnecting\n", pnode->ConnectionTypeAsString(), pnode->GetId());
-            statsClient.inc("peers.disconnect", 1.0f);
             pnode->fDisconnect = true;
             return true;
         }
@@ -1124,7 +1122,6 @@ void CConnman::DisconnectNodes()
             for (CNode* pnode : m_nodes) {
                 if (!pnode->fDisconnect) {
                     LogPrint(BCLog::NET, "Network not active, dropping peer=%d\n", pnode->GetId());
-                    statsClient.inc("peers.disconnect", 1.0f);
                     pnode->fDisconnect = true;
                 }
             }
@@ -1177,62 +1174,6 @@ void CConnman::NotifyNumConnectionsChanged()
         if (m_client_interface) {
             m_client_interface->NotifyNumConnectionsChanged(nodes_size);
         }
-        // count various node attributes
-        int fullNodes = 0;
-        int spvNodes = 0;
-        int inboundNodes = 0;
-        int outboundNodes = 0;
-        int ipv4Nodes = 0;
-        int ipv6Nodes = 0;
-        int torNodes = 0;
-        mapMsgTypeSize mapRecvBytesMsgStats;
-        mapMsgTypeSize mapSentBytesMsgStats;
-        for (const std::string &msg : getAllNetMessageTypes())
-        {
-            mapRecvBytesMsgStats[msg] = 0;
-            mapSentBytesMsgStats[msg] = 0;
-        }
-        mapRecvBytesMsgStats[NET_MESSAGE_TYPE_OTHER] = 0;
-        mapSentBytesMsgStats[NET_MESSAGE_TYPE_OTHER] = 0;
-        {
-            LOCK(m_nodes_mutex);
-            for (const CNode* pnode : m_nodes)
-            {
-                for (const mapMsgTypeSize::value_type &i : pnode->mapRecvBytesPerMsgType)
-                    mapRecvBytesMsgStats[i.first] += i.second;
-                for (const mapMsgTypeSize::value_type &i : pnode->mapSendBytesPerMsgType)
-                    mapSentBytesMsgStats[i.first] += i.second;
-                if(pnode->m_bloom_filter_loaded)
-                    spvNodes++;
-                else
-                    fullNodes++;
-                if(pnode->IsInboundConn())
-                    inboundNodes++;
-                else
-                    outboundNodes++;
-                if(pnode->addr.IsIPv4())
-                    ipv4Nodes++;
-                if(pnode->addr.IsIPv6())
-                    ipv6Nodes++;
-                if(pnode->addr.IsTor())
-                    torNodes++;
-                if(count_microseconds(pnode->m_last_ping_time)> 0)
-                    statsClient.timing("peers.ping_us", count_microseconds(pnode->m_last_ping_time), 1.0f);
-            }
-        }
-        for (const std::string &msg : getAllNetMessageTypes())
-        {
-            statsClient.gauge("bandwidth.message." + msg + ".totalBytesReceived", mapRecvBytesMsgStats[msg], 1.0f);
-            statsClient.gauge("bandwidth.message." + msg + ".totalBytesSent", mapSentBytesMsgStats[msg], 1.0f);
-        }
-        statsClient.gauge("peers.totalConnections", nPrevNodeCount, 1.0f);
-        statsClient.gauge("peers.spvNodeConnections", spvNodes, 1.0f);
-        statsClient.gauge("peers.fullNodeConnections", fullNodes, 1.0f);
-        statsClient.gauge("peers.inboundConnections", inboundNodes, 1.0f);
-        statsClient.gauge("peers.outboundConnections", outboundNodes, 1.0f);
-        statsClient.gauge("peers.ipv4Connections", ipv4Nodes, 1.0f);
-        statsClient.gauge("peers.ipv6Connections", ipv6Nodes, 1.0f);
-        statsClient.gauge("peers.torConnections", torNodes, 1.0f);
     }
 }
 
@@ -1549,6 +1490,7 @@ void CConnman::ThreadDNSAddressSeed()
         if (HaveNameProxy()) {
             AddAddrFetch(seed);
         } else {
+            std::vector<CNetAddr> vIPs;
             std::vector<CAddress> vAdd;
             ServiceFlags requiredServiceBits = GetDesirableServiceFlags(NODE_NONE);
             std::string host = strprintf("x%x.%s", requiredServiceBits, seed);
@@ -1557,9 +1499,8 @@ void CConnman::ThreadDNSAddressSeed()
                 continue;
             }
             unsigned int nMaxIPs = 256; // Limits number of IPs learned from a DNS seed
-            const auto addresses{LookupHost(host, nMaxIPs, true)};
-            if (!addresses.empty()) {
-                for (const CNetAddr& ip : addresses) {
+            if (LookupHost(host, vIPs, nMaxIPs, true)) {
+                for (const CNetAddr& ip : vIPs) {
                     CAddress addr = CAddress(CService(ip, Params().GetDefaultPort()), requiredServiceBits);
                     addr.nTime = rng.rand_uniform_delay(Now<NodeSeconds>() - 3 * 24h, -4 * 24h); // use a random age between 3 and 7 days old
                     vAdd.push_back(addr);
@@ -2275,11 +2216,14 @@ void Discover()
     char pszHostName[256] = "";
     if (gethostname(pszHostName, sizeof(pszHostName)) != SOCKET_ERROR)
     {
-        const std::vector<CNetAddr> addresses{LookupHost(pszHostName, 0, true)};
-        for (const CNetAddr& addr : addresses)
+        std::vector<CNetAddr> vaddr;
+        if (LookupHost(pszHostName, vaddr, 0, true))
         {
-            if (AddLocal(addr, LOCAL_IF))
-                LogPrintf("%s: %s - %s\n", __func__, pszHostName, addr.ToStringAddr());
+            for (const CNetAddr &addr : vaddr)
+            {
+                if (AddLocal(addr, LOCAL_IF))
+                    LogPrintf("%s: %s - %s\n", __func__, pszHostName, addr.ToStringAddr());
+            }
         }
     }
 #elif (HAVE_DECL_GETIFADDRS && HAVE_DECL_FREEIFADDRS)
@@ -2591,11 +2535,6 @@ CConnman::~CConnman()
     Stop();
 }
 
-size_t CConnman::GetAddressCount() const
-{
-    return addrman.Size();
-}
-
 std::vector<CAddress> CConnman::GetAddresses(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
 {
     std::vector<CAddress> addresses = addrman.GetAddr(max_addresses, max_pct, network);
@@ -2690,11 +2629,6 @@ size_t CConnman::GetNodeCount(ConnectionDirection flags) const
     return nNum;
 }
 
-uint32_t CConnman::GetMappedAS(const CNetAddr& addr) const
-{
-    return m_netgroupman.GetMappedAS(addr);
-}
-
 void CConnman::GetNodeStats(std::vector<CNodeStats>& vstats) const
 {
     vstats.clear();
@@ -2703,7 +2637,7 @@ void CConnman::GetNodeStats(std::vector<CNodeStats>& vstats) const
     for (CNode* pnode : m_nodes) {
         vstats.emplace_back();
         pnode->CopyStats(vstats.back());
-        vstats.back().m_mapped_as = GetMappedAS(pnode->addr);
+        vstats.back().m_mapped_as = m_netgroupman.GetMappedAS(pnode->addr);
     }
 }
 
@@ -2712,7 +2646,6 @@ bool CConnman::DisconnectNode(const std::string& strNode)
     LOCK(m_nodes_mutex);
     if (CNode* pnode = FindNode(strNode)) {
         LogPrint(BCLog::NET, "disconnect by address%s matched peer=%d; disconnecting\n", (fLogIPs ? strprintf("=%s", strNode) : ""), pnode->GetId());
-        statsClient.inc("peers.disconnect", 1.0f);
         pnode->fDisconnect = true;
         return true;
     }
@@ -2726,7 +2659,6 @@ bool CConnman::DisconnectNode(const CSubNet& subnet)
     for (CNode* pnode : m_nodes) {
         if (subnet.Match(pnode->addr)) {
             LogPrint(BCLog::NET, "disconnect by subnet%s matched peer=%d; disconnecting\n", (fLogIPs ? strprintf("=%s", subnet.ToString()) : ""), pnode->GetId());
-            statsClient.inc("peers.disconnect", 1.0f);
             pnode->fDisconnect = true;
             disconnected = true;
         }
@@ -2745,7 +2677,6 @@ bool CConnman::DisconnectNode(NodeId id)
     for(CNode* pnode : m_nodes) {
         if (id == pnode->GetId()) {
             LogPrint(BCLog::NET, "disconnect by id peer=%d; disconnecting\n", pnode->GetId());
-            statsClient.inc("peers.disconnect", 1.0f);
             pnode->fDisconnect = true;
             return true;
         }
@@ -2756,8 +2687,6 @@ bool CConnman::DisconnectNode(NodeId id)
 void CConnman::RecordBytesRecv(uint64_t bytes)
 {
     nTotalBytesRecv += bytes;
-    statsClient.count("bandwidth.bytesReceived", bytes, 0.1f);
-    statsClient.gauge("bandwidth.totalBytesReceived", nTotalBytesRecv, 0.01f);
 }
 
 void CConnman::RecordBytesSent(uint64_t bytes)
@@ -2766,8 +2695,6 @@ void CConnman::RecordBytesSent(uint64_t bytes)
     LOCK(m_total_bytes_sent_mutex);
 
     nTotalBytesSent += bytes;
-    statsClient.count("bandwidth.bytesSent", bytes, 0.01f);
-    statsClient.gauge("bandwidth.totalBytesSent", nTotalBytesSent, 0.01f);
 
     const auto now = GetTime<std::chrono::seconds>();
     if (nMaxOutboundCycleStartTime + MAX_UPLOAD_TIMEFRAME < now)
@@ -2960,9 +2887,6 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
     std::vector<unsigned char> serializedHeader;
     pnode->m_serializer->prepareForTransport(msg, serializedHeader);
     size_t nTotalSize = nMessageSize + serializedHeader.size();
-
-    statsClient.count("bandwidth.message." + SanitizeString(msg.m_type.c_str()) + ".bytesSent", nTotalSize, 1.0f);
-    statsClient.inc("message.sent." + SanitizeString(msg.m_type.c_str()), 1.0f);
 
     size_t nBytesSent = 0;
     {

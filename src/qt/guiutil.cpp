@@ -12,19 +12,17 @@
 
 #include <base58.h>
 #include <chainparams.h>
-#include <common/args.h>
 #include <interfaces/node.h>
 #include <key_io.h>
-#include <logging.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <protocol.h>
 #include <script/script.h>
 #include <script/standard.h>
-#include <util/chaintype.h>
 #include <util/exception.h>
 #include <util/fs.h>
 #include <util/fs_helpers.h>
+#include <util/system.h>
 #include <util/time.h>
 
 #ifdef WIN32
@@ -504,12 +502,12 @@ bool LabelOutOfFocusEventFilter::eventFilter(QObject* watched, QEvent* event)
 #ifdef WIN32
 fs::path static StartupShortcutPath()
 {
-    ChainType chain = gArgs.GetChainType();
-    if (chain == ChainType::MAIN)
+    std::string chain = gArgs.GetChainName();
+    if (chain == CBaseChainParams::MAIN)
         return GetSpecialFolderPath(CSIDL_STARTUP) / "Bitcoin.lnk";
-    if (chain == ChainType::TESTNET) // Remove this special case when testnet CBaseChainParams::DataDir() is incremented to "testnet4"
+    if (chain == CBaseChainParams::TESTNET) // Remove this special case when CBaseChainParams::TESTNET = "testnet4"
         return GetSpecialFolderPath(CSIDL_STARTUP) / "Bitcoin (testnet).lnk";
-    return GetSpecialFolderPath(CSIDL_STARTUP) / fs::u8path(strprintf("Bitcoin (%s).lnk", ChainTypeToString(chain)));
+    return GetSpecialFolderPath(CSIDL_STARTUP) / fs::u8path(strprintf("Bitcoin (%s).lnk", chain));
 }
 
 bool GetStartOnSystemStartup()
@@ -542,7 +540,7 @@ bool SetStartOnSystemStartup(bool fAutoStart)
             // Start client minimized
             QString strArgs = "-min";
             // Set -testnet /-regtest options
-            strArgs += QString::fromStdString(strprintf(" -chain=%s", gArgs.GetChainTypeString()));
+            strArgs += QString::fromStdString(strprintf(" -chain=%s", gArgs.GetChainName()));
 
             // Set the path to the shortcut target
             psl->SetPath(pszExePath);
@@ -587,10 +585,10 @@ fs::path static GetAutostartDir()
 
 fs::path static GetAutostartFilePath()
 {
-    ChainType chain = gArgs.GetChainType();
-    if (chain == ChainType::MAIN)
+    std::string chain = gArgs.GetChainName();
+    if (chain == CBaseChainParams::MAIN)
         return GetAutostartDir() / "bitcoin.desktop";
-    return GetAutostartDir() / fs::u8path(strprintf("bitcoin-%s.desktop", ChainTypeToString(chain)));
+    return GetAutostartDir() / fs::u8path(strprintf("bitcoin-%s.desktop", chain));
 }
 
 bool GetStartOnSystemStartup()
@@ -630,15 +628,15 @@ bool SetStartOnSystemStartup(bool fAutoStart)
         std::ofstream optionFile{GetAutostartFilePath(), std::ios_base::out | std::ios_base::trunc};
         if (!optionFile.good())
             return false;
-        ChainType chain = gArgs.GetChainType();
+        std::string chain = gArgs.GetChainName();
         // Write a bitcoin.desktop file to the autostart directory:
         optionFile << "[Desktop Entry]\n";
         optionFile << "Type=Application\n";
-        if (chain == ChainType::MAIN)
+        if (chain == CBaseChainParams::MAIN)
             optionFile << "Name=Bitcoin\n";
         else
-            optionFile << strprintf("Name=Bitcoin (%s)\n", ChainTypeToString(chain));
-        optionFile << "Exec=" << pszExePath << strprintf(" -min -chain=%s\n", ChainTypeToString(chain));
+            optionFile << strprintf("Name=Bitcoin (%s)\n", chain);
+        optionFile << "Exec=" << pszExePath << strprintf(" -min -chain=%s\n", chain);
         optionFile << "Terminal=false\n";
         optionFile << "Hidden=false\n";
         optionFile.close();

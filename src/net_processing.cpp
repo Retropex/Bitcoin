@@ -10,7 +10,6 @@
 #include <blockencodings.h>
 #include <blockfilter.h>
 #include <chainparams.h>
-#include <common/args.h>
 #include <consensus/amount.h>
 #include <consensus/validation.h>
 #include <deploymentstatus.h>
@@ -40,6 +39,7 @@
 #include <txrequest.h>
 #include <util/check.h> // For NDEBUG compile time check
 #include <util/strencodings.h>
+#include <util/system.h>
 #include <util/trace.h>
 #include <validation.h>
 
@@ -50,6 +50,9 @@
 #include <memory>
 #include <optional>
 #include <typeinfo>
+
+using node::ReadBlockFromDisk;
+using node::ReadRawBlockFromDisk;
 
 /** How long to cache transactions in mapRelay for normal relay */
 static constexpr auto RELAY_TX_CACHE_TIME = 15min;
@@ -289,8 +292,7 @@ struct Peer {
          *  this does not have to be sorted. */
         std::set<uint256> m_tx_inventory_to_send GUARDED_BY(m_tx_inventory_mutex);
         /** Whether the peer has requested us to send our complete mempool. Only
-         *  permitted if the peer has NetPermissionFlags::Mempool or we advertise
-         *  NODE_BLOOM. See BIP35. */
+         *  permitted if the peer has NetPermissionFlags::Mempool. See BIP35. */
         bool m_send_mempool GUARDED_BY(m_tx_inventory_mutex){false};
         /** The last time a BIP35 `mempool` request was serviced. */
         std::atomic<std::chrono::seconds> m_last_mempool_req{0s};
@@ -1669,7 +1671,6 @@ void PeerManagerImpl::Misbehaving(Peer& peer, int howmuch, const std::string& me
     LOCK(peer.m_misbehavior_mutex);
     const int score_before{peer.m_misbehavior_score};
     peer.m_misbehavior_score += howmuch;
-    statsClient.count("misbehavior.amount", howmuch, 1.0);
     const int score_now{peer.m_misbehavior_score};
 
     const std::string message_prefixed = message.empty() ? "" : (": " + message);
@@ -1678,7 +1679,6 @@ void PeerManagerImpl::Misbehaving(Peer& peer, int howmuch, const std::string& me
     if (score_now >= DISCOURAGEMENT_THRESHOLD && score_before < DISCOURAGEMENT_THRESHOLD) {
         warning = " DISCOURAGE THRESHOLD EXCEEDED";
         peer.m_should_discourage = true;
-        statsClient.inc("misbehavior.banned", 1.0f);
     }
 
     LogPrint(BCLog::NET, "Misbehaving: peer=%d (%d -> %d)%s%s\n",
@@ -2216,7 +2216,7 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
         // Fast-path: in this case it is possible to serve the block directly from disk,
         // as the network format matches the format on disk
         std::vector<uint8_t> block_data;
-        if (!m_chainman.m_blockman.ReadRawBlockFromDisk(block_data, pindex->GetBlockPos(), m_chainparams.MessageStart())) {
+        if (!ReadRawBlockFromDisk(block_data, pindex->GetBlockPos(), m_chainparams.MessageStart())) {
             assert(!"cannot load block from disk");
         }
         m_connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::BLOCK, Span{block_data}));
@@ -2224,7 +2224,7 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
     } else {
         // Send block from disk
         std::shared_ptr<CBlock> pblockRead = std::make_shared<CBlock>();
-        if (!m_chainman.m_blockman.ReadBlockFromDisk(*pblockRead, *pindex)) {
+        if (!ReadBlockFromDisk(*pblockRead, pindex, m_chainparams.GetConsensus())) {
             assert(!"cannot load block from disk");
         }
         pblock = pblockRead;
@@ -3209,7 +3209,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     AssertLockHeld(g_msgproc_mutex);
 
     LogPrint(BCLog::NET, "received: %s (%u bytes) peer=%d\n", SanitizeString(msg_type), vRecv.size(), pfrom.GetId());
-    statsClient.inc("message.received." + SanitizeString(msg_type), 1.0f);
 
     PeerRef peer = GetPeerRef(pfrom.GetId());
     if (peer == nullptr) return;
@@ -3412,11 +3411,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         if (fLogIPs)
             remoteAddr = ", peeraddr=" + pfrom.addr.ToStringAddrPort();
 
-        const auto mapped_as{m_connman.GetMappedAS(pfrom.addr)};
-        LogPrint(BCLog::NET, "receive version message: %s: version %d, blocks=%d, us=%s, txrelay=%d, peer=%d%s%s\n",
+        LogPrint(BCLog::NET, "receive version message: %s: version %d, blocks=%d, us=%s, txrelay=%d, peer=%d%s\n",
                   cleanSubVer, pfrom.nVersion,
                   peer->m_starting_height, addrMe.ToStringAddrPort(), fRelay, pfrom.GetId(),
-                  remoteAddr, (mapped_as ? strprintf(", mapped_as=%d", mapped_as) : ""));
+                  remoteAddr);
 
         int64_t nTimeOffset = nTime - GetTime();
         pfrom.nTimeOffset = nTimeOffset;
@@ -3456,11 +3454,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         if (!pfrom.IsInboundConn()) {
-            const auto mapped_as{m_connman.GetMappedAS(pfrom.addr)};
-            LogPrintf("New outbound peer connected: version: %d, blocks=%d, peer=%d%s%s (%s)\n",
+            LogPrintf("New outbound peer connected: version: %d, blocks=%d, peer=%d%s (%s)\n",
                       pfrom.nVersion.load(), peer->m_starting_height,
                       pfrom.GetId(), (fLogIPs ? strprintf(", peeraddr=%s", pfrom.addr.ToStringAddrPort()) : ""),
-                      (mapped_as ? strprintf(", mapped_as=%d", mapped_as) : ""),
                       pfrom.ConnectionTypeAsString());
         }
 
@@ -3712,8 +3708,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             LogPrint(BCLog::NET, "addrfetch connection completed peer=%d; disconnecting\n", pfrom.GetId());
             pfrom.fDisconnect = true;
         }
-
-        statsClient.gauge("peers.knownAddresses", m_connman.GetAddressCount(), 1.0f);
         return;
     }
 
@@ -3746,7 +3740,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
 
             if (inv.IsMsgBlk()) {
-                statsClient.inc("message.received.inv_block", 1.0f);
                 const bool fAlreadyHave = AlreadyHaveBlock(inv.hash);
                 LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom.GetId());
 
@@ -3769,7 +3762,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 const GenTxid gtxid = ToGenTxid(inv);
                 const bool fAlreadyHave = AlreadyHaveTx(gtxid);
                 LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom.GetId());
-                statsClient.inc("message.received.inv_tx", 1.0f);
 
                 AddKnownTx(*peer, inv.hash);
                 if (!fAlreadyHave && !m_chainman.ActiveChainstate().IsInitialBlockDownload()) {
@@ -3928,7 +3920,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
             if (pindex->nHeight >= m_chainman.ActiveChain().Height() - MAX_BLOCKTXN_DEPTH) {
                 CBlock block;
-                const bool ret{m_chainman.m_blockman.ReadBlockFromDisk(block, *pindex)};
+                bool ret = ReadBlockFromDisk(block, pindex, m_chainparams.GetConsensus());
                 assert(ret);
 
                 SendBlockTransactions(pfrom, *peer, block, req);
@@ -4706,8 +4698,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::MEMPOOL) {
-        // Only process received mempool messages if we advertise NODE_BLOOM
-        // or if the peer has mempool permissions.
         if (!(peer->m_our_services & NODE_BLOOM) && !pfrom.HasPermission(NetPermissionFlags::Mempool))
         {
             if (!pfrom.HasPermission(NetPermissionFlags::NoBan))
@@ -5637,7 +5627,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         m_connman.PushMessage(pto, std::move(cached_cmpctblock_msg.value()));
                     } else {
                         CBlock block;
-                        const bool ret{m_chainman.m_blockman.ReadBlockFromDisk(block, *pBestIndex)};
+                        bool ret = ReadBlockFromDisk(block, pBestIndex, consensusParams);
                         assert(ret);
                         CBlockHeaderAndShortTxIDs cmpctblock{block};
                         m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::CMPCTBLOCK, cmpctblock));
@@ -5845,7 +5835,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
             // Stalling only triggers when the block download window cannot move. During normal steady state,
             // the download window should be much larger than the to-be-downloaded set of blocks, so disconnection
             // should only happen during initial block download.
-            LogPrintf("Peer=%d%s is stalling block download, disconnecting\n", pto->GetId(), fLogIPs ? strprintf(" peeraddr=%s", pto->addr.ToStringAddrPort()) : "");
+            LogPrintf("Peer=%d is stalling block download, disconnecting\n", pto->GetId());
             pto->fDisconnect = true;
             // Increase timeout for the next peer so that we don't disconnect multiple peers if our own
             // bandwidth is insufficient.
@@ -5864,7 +5854,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
             QueuedBlock &queuedBlock = state.vBlocksInFlight.front();
             int nOtherPeersWithValidatedDownloads = m_peers_downloading_from - 1;
             if (current_time > state.m_downloading_since + std::chrono::seconds{consensusParams.nPowTargetSpacing} * (BLOCK_DOWNLOAD_TIMEOUT_BASE + BLOCK_DOWNLOAD_TIMEOUT_PER_PEER * nOtherPeersWithValidatedDownloads)) {
-                LogPrintf("Timeout downloading block %s from peer=%d%s, disconnecting\n", queuedBlock.pindex->GetBlockHash().ToString(), pto->GetId(), fLogIPs ? strprintf(" peeraddr=%s", pto->addr.ToStringAddrPort()) : "");
+                LogPrintf("Timeout downloading block %s from peer=%d, disconnecting\n", queuedBlock.pindex->GetBlockHash().ToString(), pto->GetId());
                 pto->fDisconnect = true;
                 return true;
             }
@@ -5880,11 +5870,11 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                     // disconnect our sync peer for stalling; we have bigger
                     // problems if we can't get any outbound peers.
                     if (!pto->HasPermission(NetPermissionFlags::NoBan)) {
-                        LogPrintf("Timeout downloading headers from peer=%d%s, disconnecting\n", pto->GetId(), fLogIPs ? strprintf(" peeraddr=%s", pto->addr.ToStringAddrPort()) : "");
+                        LogPrintf("Timeout downloading headers from peer=%d, disconnecting\n", pto->GetId());
                         pto->fDisconnect = true;
                         return true;
                     } else {
-                        LogPrintf("Timeout downloading headers from noban peer=%d%s, not disconnecting\n", pto->GetId(), fLogIPs ? strprintf(" peeraddr=%s", pto->addr.ToStringAddrPort()) : "");
+                        LogPrintf("Timeout downloading headers from noban peer=%d, not disconnecting\n", pto->GetId());
                         // Reset the headers sync state so that we have a
                         // chance to try downloading from a different peer.
                         // Note: this will also result in at least one more

@@ -30,8 +30,6 @@ class WalletLoader;
 } // namespace interfaces
 
 namespace node {
-class KernelNotifications;
-
 //! NodeContext struct containing references to chain state and connection
 //! state.
 //!
@@ -64,7 +62,6 @@ struct NodeContext {
     interfaces::WalletLoader* wallet_loader{nullptr};
     std::unique_ptr<CScheduler> scheduler;
     std::function<void()> rpc_interruption_point = [] {};
-    std::unique_ptr<KernelNotifications> notifications;
 
     //! Declare default constructor and destructor that are not inline, so code
     //! instantiating the NodeContext struct doesn't need to #include class
