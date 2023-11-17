@@ -1086,6 +1086,9 @@ bool CConnman::AddConnection(const std::string& address, ConnectionType conn_typ
     case ConnectionType::BLOCK_RELAY:
         max_connections = m_max_outbound_block_relay;
         break;
+    case ConnectionType::FULL_RBF:
+        max_connections = m_max_outbound_fullrbf_relay;
+        break;
     // no limit for ADDR_FETCH because -seednode has no limit either
     case ConnectionType::ADDR_FETCH:
         break;
@@ -1706,6 +1709,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
         // Only connect out to one peer per ipv4/ipv6 network group (/16 for IPv4).
         int nOutboundFullRelay = 0;
         int nOutboundBlockRelay = 0;
+        int nOutboundFullRBF = 0;
         int outbound_privacy_network_peers = 0;
         std::set<std::vector<unsigned char>> setConnected; // netgroups of our ipv4/ipv6 outbound peers
 
@@ -1714,6 +1718,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             for (const CNode* pnode : m_nodes) {
                 if (pnode->IsFullOutboundConn()) nOutboundFullRelay++;
                 if (pnode->IsBlockOnlyConn()) nOutboundBlockRelay++;
+                if (pnode->IsFullRBF()) nOutboundFullRBF++;
 
                 // Make sure our persistent outbound slots to ipv4/ipv6 peers belong to different netgroups.
                 switch (pnode->m_conn_type) {
@@ -1729,6 +1734,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
                     case ConnectionType::MANUAL:
                     case ConnectionType::OUTBOUND_FULL_RELAY:
                     case ConnectionType::BLOCK_RELAY:
+                    case ConnectionType::FULL_RBF:
                         CAddress address{pnode->addr};
                         if (address.IsTor() || address.IsI2P() || address.IsCJDNS()) {
                             // Since our addrman-groups for these networks are
@@ -1750,6 +1756,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
         auto now = GetTime<std::chrono::microseconds>();
         bool anchor = false;
         bool fFeeler = false;
+        bool fullrbf = false;
 
         // Determine what type of connection to open. Opening
         // BLOCK_RELAY connections to addresses from anchors.dat gets the highest
@@ -1795,6 +1802,9 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             // (similar to how we deal with extra outbound peers).
             next_extra_block_relay = GetExponentialRand(now, EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL);
             conn_type = ConnectionType::BLOCK_RELAY;
+        } else if (m_full_rbf && nOutboundFullRBF < m_max_outbound_fullrbf_relay) {
+            conn_type = ConnectionType::FULL_RBF;
+            fullrbf = true;
         } else if (now > next_feeler) {
             next_feeler = GetExponentialRand(now, FEELER_INTERVAL);
             conn_type = ConnectionType::FEELER;
@@ -1872,6 +1882,11 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             if (current_time - addr_last_try < 10min && nTries < 30) {
                 continue;
             }
+
+            // if we would like to open a fullrbf connection, requires
+            // the fullrbf service flag to be set
+            if (fullrbf && !HasFullRBFServiceFlag(addr.nServices))
+                continue;
 
             // for non-feelers, require all the services we'll want,
             // for feelers, only require they be a full node (only because most
