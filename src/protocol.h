@@ -298,6 +298,8 @@ enum ServiceFlags : uint64_t {
     // collisions and other cases where nodes may be advertising a service they
     // do not actually support. Other service bits should be allocated via the
     // BIP process.
+
+    NODE_FULL_RBF = (1 << 26),
 };
 
 /**
@@ -353,6 +355,14 @@ static inline bool HasAllDesirableServiceFlags(ServiceFlags services)
 static inline bool MayHaveUsefulAddressDB(ServiceFlags services)
 {
     return (services & NODE_NETWORK) || (services & NODE_NETWORK_LIMITED);
+}
+
+/**
+ * Checks if a peer with the given service flags enables fullrbf.
+ */
+static inline bool HasFullRBFServiceFlag(ServiceFlags services)
+{
+    return (services & NODE_FULL_RBF);
 }
 
 /** A CService with information about it as peer */
