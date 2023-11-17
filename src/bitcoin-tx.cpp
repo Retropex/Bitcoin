@@ -6,11 +6,8 @@
 #include <config/bitcoin-config.h>
 #endif
 
-#include <chainparamsbase.h>
 #include <clientversion.h>
 #include <coins.h>
-#include <common/args.h>
-#include <common/system.h>
 #include <compat/compat.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
@@ -28,6 +25,7 @@
 #include <util/rbf.h>
 #include <util/strencodings.h>
 #include <util/string.h>
+#include <util/system.h>
 #include <util/translation.h>
 
 #include <cstdio>
@@ -92,7 +90,7 @@ static int AppInitRawTx(int argc, char* argv[])
 
     // Check for chain settings (Params() calls are only valid after this clause)
     try {
-        SelectParams(gArgs.GetChainType());
+        SelectParams(gArgs.GetChainName());
     } catch (const std::exception& e) {
         tfm::format(std::cerr, "Error: %s\n", e.what());
         return EXIT_FAILURE;

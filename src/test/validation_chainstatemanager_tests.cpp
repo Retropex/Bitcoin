@@ -4,7 +4,6 @@
 //
 #include <chainparams.h>
 #include <consensus/validation.h>
-#include <node/kernel_notifications.h>
 #include <node/utxo_snapshot.h>
 #include <random.h>
 #include <rpc/blockchain.h>
@@ -23,8 +22,6 @@
 
 #include <boost/test/unit_test.hpp>
 
-using node::BlockManager;
-using node::KernelNotifications;
 using node::SnapshotMetadata;
 
 BOOST_FIXTURE_TEST_SUITE(validation_chainstatemanager_tests, ChainTestingSetup)
@@ -379,21 +376,15 @@ struct SnapshotTestSetup : TestChain100Setup {
             LOCK(::cs_main);
             chainman.ResetChainstates();
             BOOST_CHECK_EQUAL(chainman.GetAll().size(), 0);
-            m_node.notifications = std::make_unique<KernelNotifications>();
             const ChainstateManager::Options chainman_opts{
                 .chainparams = ::Params(),
                 .datadir = m_args.GetDataDirNet(),
                 .adjusted_time_callback = GetAdjustedTime,
-                .notifications = *m_node.notifications,
-            };
-            const BlockManager::Options blockman_opts{
-                .chainparams = chainman_opts.chainparams,
-                .blocks_dir = m_args.GetBlocksDirPath(),
             };
             // For robustness, ensure the old manager is destroyed before creating a
             // new one.
             m_node.chainman.reset();
-            m_node.chainman = std::make_unique<ChainstateManager>(chainman_opts, blockman_opts);
+            m_node.chainman = std::make_unique<ChainstateManager>(chainman_opts, node::BlockManager::Options{});
         }
         return *Assert(m_node.chainman);
     }

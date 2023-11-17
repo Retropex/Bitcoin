@@ -9,12 +9,11 @@
 #include <interfaces/wallet.h>
 #include <node/context.h>
 #include <test/util/setup_common.h>
-#include <util/chaintype.h>
 
 
 namespace wallet {
 struct InitWalletDirTestingSetup: public BasicTestingSetup {
-    explicit InitWalletDirTestingSetup(const ChainType chain_type = ChainType::MAIN);
+    explicit InitWalletDirTestingSetup(const std::string& chainName = CBaseChainParams::MAIN);
     ~InitWalletDirTestingSetup();
     void SetWalletDir(const fs::path& walletdir_path);
 

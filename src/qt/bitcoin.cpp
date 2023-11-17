@@ -9,9 +9,7 @@
 #include <qt/bitcoin.h>
 
 #include <chainparams.h>
-#include <common/args.h>
 #include <common/init.h>
-#include <common/system.h>
 #include <init.h>
 #include <interfaces/handler.h>
 #include <interfaces/init.h>
@@ -33,6 +31,7 @@
 #include <uint256.h>
 #include <util/exception.h>
 #include <util/string.h>
+#include <util/system.h>
 #include <util/threadnames.h>
 #include <util/translation.h>
 #include <validation.h>
@@ -495,7 +494,7 @@ static void SetupUIArgs(ArgsManager& argsman)
 int GuiMain(int argc, char* argv[])
 {
 #ifdef WIN32
-    common::WinCmdLineArgs winArgs;
+    util::WinCmdLineArgs winArgs;
     std::tie(argc, argv) = winArgs.get();
 #endif
 
@@ -601,7 +600,7 @@ int GuiMain(int argc, char* argv[])
     PaymentServer::ipcParseCommandLine(argc, argv);
 #endif
 
-    QScopedPointer<const NetworkStyle> networkStyle(NetworkStyle::instantiate(Params().GetChainType()));
+    QScopedPointer<const NetworkStyle> networkStyle(NetworkStyle::instantiate(Params().NetworkIDString()));
     assert(!networkStyle.isNull());
     // Allow for separate UI settings for testnets
     QApplication::setApplicationName(networkStyle->getAppName());

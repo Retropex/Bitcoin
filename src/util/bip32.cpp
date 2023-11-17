@@ -51,17 +51,17 @@ bool ParseHDKeypath(const std::string& keypath_str, std::vector<uint32_t>& keypa
     return true;
 }
 
-std::string FormatHDKeypath(const std::vector<uint32_t>& path, bool apostrophe)
+std::string FormatHDKeypath(const std::vector<uint32_t>& path)
 {
     std::string ret;
     for (auto i : path) {
         ret += strprintf("/%i", (i << 1) >> 1);
-        if (i >> 31) ret += apostrophe ? '\'' : 'h';
+        if (i >> 31) ret += '\'';
     }
     return ret;
 }
 
-std::string WriteHDKeypath(const std::vector<uint32_t>& keypath, bool apostrophe)
+std::string WriteHDKeypath(const std::vector<uint32_t>& keypath)
 {
-    return "m" + FormatHDKeypath(keypath, apostrophe);
+    return "m" + FormatHDKeypath(keypath);
 }

@@ -5,21 +5,15 @@
 
 #include <chainparams.h>
 
-#include <chainparamsbase.h>
-#include <common/args.h>
-#include <consensus/params.h>
+#include <chainparamsseeds.h>
+#include <consensus/merkle.h>
 #include <deploymentinfo.h>
-#include <logging.h>
-#include <tinyformat.h>
-#include <util/chaintype.h>
-#include <util/strencodings.h>
+#include <hash.h> // for signet block challenge hash
+#include <script/interpreter.h>
 #include <util/string.h>
+#include <util/system.h>
 
-#include <cassert>
-#include <cstdint>
-#include <limits>
-#include <stdexcept>
-#include <vector>
+#include <assert.h>
 
 void ReadSigNetArgs(const ArgsManager& args, CChainParams::SigNetOptions& options)
 {
@@ -29,13 +23,9 @@ void ReadSigNetArgs(const ArgsManager& args, CChainParams::SigNetOptions& option
     if (args.IsArgSet("-signetchallenge")) {
         const auto signet_challenge = args.GetArgs("-signetchallenge");
         if (signet_challenge.size() != 1) {
-            throw std::runtime_error("-signetchallenge cannot be multiple values.");
+            throw std::runtime_error(strprintf("%s: -signetchallenge cannot be multiple values.", __func__));
         }
-        const auto val{TryParseHex<uint8_t>(signet_challenge[0])};
-        if (!val) {
-            throw std::runtime_error(strprintf("-signetchallenge must be hex, not '%s'.", signet_challenge[0]));
-        }
-        options.challenge.emplace(*val);
+        options.challenge.emplace(ParseHex(signet_challenge[0]));
     }
 }
 
@@ -106,29 +96,26 @@ const CChainParams &Params() {
     return *globalChainParams;
 }
 
-std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const ChainType chain)
+std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const std::string& chain)
 {
-    switch (chain) {
-    case ChainType::MAIN:
+    if (chain == CBaseChainParams::MAIN) {
         return CChainParams::Main();
-    case ChainType::TESTNET:
+    } else if (chain == CBaseChainParams::TESTNET) {
         return CChainParams::TestNet();
-    case ChainType::SIGNET: {
+    } else if (chain == CBaseChainParams::SIGNET) {
         auto opts = CChainParams::SigNetOptions{};
         ReadSigNetArgs(args, opts);
         return CChainParams::SigNet(opts);
-    }
-    case ChainType::REGTEST: {
+    } else if (chain == CBaseChainParams::REGTEST) {
         auto opts = CChainParams::RegTestOptions{};
         ReadRegTestArgs(args, opts);
         return CChainParams::RegTest(opts);
     }
-    }
-    assert(false);
+    throw std::runtime_error(strprintf("%s: Unknown chain %s.", __func__, chain));
 }
 
-void SelectParams(const ChainType chain)
+void SelectParams(const std::string& network)
 {
-    SelectBaseParams(chain);
-    globalChainParams = CreateChainParams(gArgs, chain);
+    SelectBaseParams(network);
+    globalChainParams = CreateChainParams(gArgs, network);
 }

@@ -2,7 +2,6 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <common/system.h>
 #include <interfaces/init.h>
 #include <interfaces/ipc.h>
 #include <ipc/capnp/protocol.h>
@@ -11,6 +10,7 @@
 #include <logging.h>
 #include <tinyformat.h>
 #include <util/fs.h>
+#include <util/system.h>
 
 #include <cstdio>
 #include <cstdlib>

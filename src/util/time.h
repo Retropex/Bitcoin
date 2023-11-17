@@ -71,6 +71,9 @@ using MillisecondsDouble = std::chrono::duration<double, std::chrono::millisecon
  */
 int64_t GetTime();
 
+/** Returns the system time (not mockable) */
+int64_t GetTimeMillis();
+
 /**
  * DEPRECATED
  * Use SetMockTime with chrono type

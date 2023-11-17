@@ -7,11 +7,9 @@
 
 #include <chain.h>
 #include <coins.h>
-#include <common/system.h>
 #include <consensus/consensus.h>
 #include <consensus/tx_verify.h>
 #include <consensus/validation.h>
-#include <logging.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
 #include <policy/settings.h>
@@ -20,13 +18,13 @@
 #include <util/moneystr.h>
 #include <util/overflow.h>
 #include <util/result.h>
+#include <util/system.h>
 #include <util/time.h>
 #include <util/trace.h>
 #include <util/translation.h>
 #include <validationinterface.h>
 
 #include <cmath>
-#include <numeric>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -919,19 +917,6 @@ CTxMemPool::setEntries CTxMemPool::GetIterSet(const std::set<uint256>& hashes) c
     return ret;
 }
 
-std::vector<CTxMemPool::txiter> CTxMemPool::GetIterVec(const std::vector<uint256>& txids) const
-{
-    AssertLockHeld(cs);
-    std::vector<txiter> ret;
-    ret.reserve(txids.size());
-    for (const auto& txid : txids) {
-        const auto it{GetIter(txid)};
-        if (!it) return {};
-        ret.push_back(*it);
-    }
-    return ret;
-}
-
 bool CTxMemPool::HasNoInputsOf(const CTransaction &tx) const
 {
     for (unsigned int i = 0; i < tx.vin.size(); i++)
@@ -1161,6 +1146,7 @@ void CTxMemPool::SetLoadTried(bool load_tried)
     m_load_tried = load_tried;
 }
 
+
 std::string RemovalReasonToString(const MemPoolRemovalReason& r) noexcept
 {
     switch (r) {
@@ -1172,31 +1158,4 @@ std::string RemovalReasonToString(const MemPoolRemovalReason& r) noexcept
         case MemPoolRemovalReason::REPLACED: return "replaced";
     }
     assert(false);
-}
-
-std::vector<CTxMemPool::txiter> CTxMemPool::GatherClusters(const std::vector<uint256>& txids) const
-{
-    AssertLockHeld(cs);
-    std::vector<txiter> clustered_txs{GetIterVec(txids)};
-    // Use epoch: visiting an entry means we have added it to the clustered_txs vector. It does not
-    // necessarily mean the entry has been processed.
-    WITH_FRESH_EPOCH(m_epoch);
-    for (const auto& it : clustered_txs) {
-        visited(it);
-    }
-    // i = index of where the list of entries to process starts
-    for (size_t i{0}; i < clustered_txs.size(); ++i) {
-        // DoS protection: if there are 500 or more entries to process, just quit.
-        if (clustered_txs.size() > 500) return {};
-        const txiter& tx_iter = clustered_txs.at(i);
-        for (const auto& entries : {tx_iter->GetMemPoolParentsConst(), tx_iter->GetMemPoolChildrenConst()}) {
-            for (const CTxMemPoolEntry& entry : entries) {
-                const auto entry_it = mapTx.iterator_to(entry);
-                if (!visited(entry_it)) {
-                    clustered_txs.push_back(entry_it);
-                }
-            }
-        }
-    }
-    return clustered_txs;
 }

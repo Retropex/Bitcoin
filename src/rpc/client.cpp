@@ -3,9 +3,9 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <common/args.h>
 #include <rpc/client.h>
 #include <tinyformat.h>
+#include <util/system.h>
 
 #include <set>
 #include <stdint.h>
@@ -133,9 +133,6 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "walletprocesspsbt", 1, "sign" },
     { "walletprocesspsbt", 3, "bip32derivs" },
     { "walletprocesspsbt", 4, "finalize" },
-    { "descriptorprocesspsbt", 1, "descriptors"},
-    { "descriptorprocesspsbt", 3, "bip32derivs" },
-    { "descriptorprocesspsbt", 4, "finalize" },
     { "createpsbt", 0, "inputs" },
     { "createpsbt", 1, "outputs" },
     { "createpsbt", 2, "locktime" },

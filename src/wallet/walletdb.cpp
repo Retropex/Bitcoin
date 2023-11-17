@@ -5,13 +5,13 @@
 
 #include <wallet/walletdb.h>
 
-#include <common/system.h>
 #include <key_io.h>
 #include <protocol.h>
 #include <serialize.h>
 #include <sync.h>
 #include <util/bip32.h>
 #include <util/fs.h>
+#include <util/system.h>
 #include <util/time.h>
 #include <util/translation.h>
 #ifdef USE_BDB
@@ -615,20 +615,7 @@ ReadKeyValue(CWallet* pwallet, DataStream& ssKey, CDataStream& ssValue,
             ssKey >> strAddress;
             ssKey >> strKey;
             ssValue >> strValue;
-            const CTxDestination& dest{DecodeDestination(strAddress)};
-            if (strKey.compare("used") == 0) {
-                // Load "used" key indicating if an IsMine address has
-                // previously been spent from with avoid_reuse option enabled.
-                // The strValue is not used for anything currently, but could
-                // hold more information in the future. Current values are just
-                // "1" or "p" for present (which was written prior to
-                // f5ba424cd44619d9b9be88b8593d69a7ba96db26).
-                pwallet->LoadAddressPreviouslySpent(dest);
-            } else if (strKey.compare(0, 2, "rr") == 0) {
-                // Load "rr##" keys where ## is a decimal number, and strValue
-                // is a serialized RecentRequestEntry object.
-                pwallet->LoadAddressReceiveRequest(dest, strKey.substr(2), strValue);
-            }
+            pwallet->LoadDestData(DecodeDestination(strAddress), strKey, strValue);
         } else if (strType == DBKeys::HDCHAIN) {
             CHDChain chain;
             ssValue >> chain;
@@ -1101,28 +1088,16 @@ void MaybeCompactWalletDB(WalletContext& context)
     fOneThread = false;
 }
 
-bool WalletBatch::WriteAddressPreviouslySpent(const CTxDestination& dest, bool previously_spent)
+bool WalletBatch::WriteDestData(const std::string &address, const std::string &key, const std::string &value)
 {
-    auto key{std::make_pair(DBKeys::DESTDATA, std::make_pair(EncodeDestination(dest), std::string("used")))};
-    return previously_spent ? WriteIC(key, std::string("1")) : EraseIC(key);
+    return WriteIC(std::make_pair(DBKeys::DESTDATA, std::make_pair(address, key)), value);
 }
 
-bool WalletBatch::WriteAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& receive_request)
+bool WalletBatch::EraseDestData(const std::string &address, const std::string &key)
 {
-    return WriteIC(std::make_pair(DBKeys::DESTDATA, std::make_pair(EncodeDestination(dest), "rr" + id)), receive_request);
+    return EraseIC(std::make_pair(DBKeys::DESTDATA, std::make_pair(address, key)));
 }
 
-bool WalletBatch::EraseAddressReceiveRequest(const CTxDestination& dest, const std::string& id)
-{
-    return EraseIC(std::make_pair(DBKeys::DESTDATA, std::make_pair(EncodeDestination(dest), "rr" + id)));
-}
-
-bool WalletBatch::EraseAddressData(const CTxDestination& dest)
-{
-    DataStream prefix;
-    prefix << DBKeys::DESTDATA << EncodeDestination(dest);
-    return m_batch->ErasePrefix(prefix);
-}
 
 bool WalletBatch::WriteHDChain(const CHDChain& chain)
 {
@@ -1136,9 +1111,6 @@ bool WalletBatch::WriteWalletFlags(const uint64_t flags)
 
 bool WalletBatch::EraseRecords(const std::unordered_set<std::string>& types)
 {
-    // Begin db txn
-    if (!m_batch->TxnBegin()) return false;
-
     // Get cursor
     std::unique_ptr<DatabaseCursor> cursor = m_batch->GetNewCursor();
     if (!cursor)
@@ -1147,7 +1119,8 @@ bool WalletBatch::EraseRecords(const std::unordered_set<std::string>& types)
     }
 
     // Iterate the DB and look for any records that have the type prefixes
-    while (true) {
+    while (true)
+    {
         // Read next record
         DataStream key{};
         DataStream value{};
@@ -1155,8 +1128,6 @@ bool WalletBatch::EraseRecords(const std::unordered_set<std::string>& types)
         if (status == DatabaseCursor::Status::DONE) {
             break;
         } else if (status == DatabaseCursor::Status::FAIL) {
-            cursor.reset(nullptr);
-            m_batch->TxnAbort(); // abort db txn
             return false;
         }
 
@@ -1167,16 +1138,10 @@ bool WalletBatch::EraseRecords(const std::unordered_set<std::string>& types)
         key >> type;
 
         if (types.count(type) > 0) {
-            if (!m_batch->Erase(key_data)) {
-                cursor.reset(nullptr);
-                m_batch->TxnAbort();
-                return false; // erase failed
-            }
+            m_batch->Erase(key_data);
         }
     }
-    // Finish db txn
-    cursor.reset(nullptr);
-    return m_batch->TxnCommit();
+    return true;
 }
 
 bool WalletBatch::TxnBegin()
@@ -1271,5 +1236,45 @@ std::unique_ptr<WalletDatabase> MakeDatabase(const fs::path& path, const Databas
     error = Untranslated(strprintf("Failed to open database path '%s'. Build does not support Berkeley DB database format.", fs::PathToString(path)));
     status = DatabaseStatus::FAILED_BAD_FORMAT;
     return nullptr;
+}
+
+/** Return object for accessing dummy database with no read/write capabilities. */
+std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase()
+{
+    return std::make_unique<DummyDatabase>();
+}
+
+/** Return object for accessing temporary in-memory database. */
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase(DatabaseOptions& options)
+{
+
+    std::optional<DatabaseFormat> format;
+    if (options.require_format) format = options.require_format;
+    if (!format) {
+#ifdef USE_BDB
+        format = DatabaseFormat::BERKELEY;
+#endif
+#ifdef USE_SQLITE
+        format = DatabaseFormat::SQLITE;
+#endif
+    }
+
+    if (format == DatabaseFormat::SQLITE) {
+#ifdef USE_SQLITE
+        return std::make_unique<SQLiteDatabase>(":memory:", "", options, true);
+#endif
+        assert(false);
+    }
+
+#ifdef USE_BDB
+    return std::make_unique<BerkeleyDatabase>(std::make_shared<BerkeleyEnvironment>(), "", options);
+#endif
+    assert(false);
+}
+
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase()
+{
+    DatabaseOptions options;
+    return CreateMockWalletDatabase(options);
 }
 } // namespace wallet

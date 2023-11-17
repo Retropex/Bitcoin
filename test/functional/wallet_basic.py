@@ -8,10 +8,6 @@ from itertools import product
 
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
-from test_framework.messages import (
-    COIN,
-    DEFAULT_ANCESTOR_LIMIT,
-)
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_array_result,
@@ -21,7 +17,6 @@ from test_framework.util import (
     find_vout_for_address,
 )
 from test_framework.wallet_util import test_address
-from test_framework.wallet import MiniWallet
 
 NOT_A_NUMBER_OR_STRING = "Amount is not a number or string"
 OUT_OF_RANGE = "Amount out of range"
@@ -271,20 +266,6 @@ class WalletTest(BitcoinTestFramework):
         node_2_bal -= Decimal('10')
         assert_equal(self.nodes[2].getbalance(), node_2_bal)
         node_0_bal = self.check_fee_amount(self.nodes[0].getbalance(), node_0_bal + Decimal('10'), fee_per_byte, self.get_vsize(self.nodes[2].gettransaction(txid)['hex']))
-
-        # Sendmany 5 BTC to two addresses with subtracting fee from both addresses
-        a0 = self.nodes[0].getnewaddress()
-        a1 = self.nodes[0].getnewaddress()
-        txid = self.nodes[2].sendmany(dummy='', amounts={a0: 5, a1: 5}, subtractfeefrom=[a0, a1])
-        self.generate(self.nodes[2], 1, sync_fun=lambda: self.sync_all(self.nodes[0:3]))
-        node_2_bal -= Decimal('10')
-        assert_equal(self.nodes[2].getbalance(), node_2_bal)
-        tx = self.nodes[2].gettransaction(txid)
-        node_0_bal = self.check_fee_amount(self.nodes[0].getbalance(), node_0_bal + Decimal('10'), fee_per_byte, self.get_vsize(tx['hex']))
-        assert_equal(self.nodes[0].getbalance(), node_0_bal)
-        expected_bal = Decimal('5') + (tx['fee'] / 2)
-        assert_equal(self.nodes[0].getreceivedbyaddress(a0), expected_bal)
-        assert_equal(self.nodes[0].getreceivedbyaddress(a1), expected_bal)
 
         self.log.info("Test sendmany with fee_rate param (explicit fee rate in sat/vB)")
         fee_rate_sat_vb = 2
@@ -685,7 +666,7 @@ class WalletTest(BitcoinTestFramework):
                                  "category": baz["category"],
                                  "vout":     baz["vout"]}
         expected_fields = frozenset({'amount', 'bip125-replaceable', 'confirmations', 'details', 'fee',
-                                     'hex', 'lastprocessedblock', 'time', 'timereceived', 'trusted', 'txid', 'wtxid', 'walletconflicts'})
+                                     'hex', 'time', 'timereceived', 'trusted', 'txid', 'wtxid', 'walletconflicts'})
         verbose_field = "decoded"
         expected_verbose_fields = expected_fields | {verbose_field}
 
@@ -788,34 +769,6 @@ class WalletTest(BitcoinTestFramework):
         assert_equal(bal['mine']['untrusted_pending'], 0)
 
         zeroconf_wallet.sendtoaddress(zeroconf_wallet.getnewaddress(), Decimal('0.5'))
-
-        self.test_chain_listunspent()
-
-    def test_chain_listunspent(self):
-        if not self.options.descriptors:
-            return
-        self.wallet = MiniWallet(self.nodes[0])
-        self.nodes[0].get_wallet_rpc(self.default_wallet_name).sendtoaddress(self.wallet.get_address(), "5")
-        self.generate(self.wallet, 1, sync_fun=self.no_op)
-        self.nodes[0].createwallet("watch_wallet", disable_private_keys=True)
-        watch_wallet = self.nodes[0].get_wallet_rpc("watch_wallet")
-        watch_wallet.importaddress(self.wallet.get_address())
-
-        # DEFAULT_ANCESTOR_LIMIT transactions off a confirmed tx should be fine
-        chain = self.wallet.create_self_transfer_chain(chain_length=DEFAULT_ANCESTOR_LIMIT)
-        ancestor_vsize = 0
-        ancestor_fees = Decimal(0)
-
-        for i, t in enumerate(chain):
-            ancestor_vsize += t["tx"].get_vsize()
-            ancestor_fees += t["fee"]
-            self.wallet.sendrawtransaction(from_node=self.nodes[0], tx_hex=t["hex"])
-            # Check that listunspent ancestor{count, size, fees} yield the correct results
-            wallet_unspent = watch_wallet.listunspent(minconf=0)
-            this_unspent = next(utxo_info for utxo_info in wallet_unspent if utxo_info["txid"] == t["txid"])
-            assert_equal(this_unspent['ancestorcount'], i + 1)
-            assert_equal(this_unspent['ancestorsize'], ancestor_vsize)
-            assert_equal(this_unspent['ancestorfees'], ancestor_fees * COIN)
 
 
 if __name__ == '__main__':

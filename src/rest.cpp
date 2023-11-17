@@ -24,8 +24,8 @@
 #include <streams.h>
 #include <sync.h>
 #include <txmempool.h>
-#include <util/any.h>
 #include <util/check.h>
+#include <util/system.h>
 #include <validation.h>
 #include <version.h>
 
@@ -36,6 +36,7 @@
 
 using node::GetTransaction;
 using node::NodeContext;
+using node::ReadBlockFromDisk;
 
 static const size_t MAX_GETUTXOS_OUTPOINTS = 15; //allow a max of 15 outpoints to be queried at once
 static constexpr unsigned int MAX_REST_HEADERS_RESULTS = 2000;
@@ -310,7 +311,7 @@ static bool rest_block(const std::any& context,
 
     }
 
-    if (!chainman.m_blockman.ReadBlockFromDisk(block, *pblockindex)) {
+    if (!ReadBlockFromDisk(block, pblockindex, chainman.GetParams().GetConsensus())) {
         return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");
     }
 
@@ -715,7 +716,7 @@ static bool rest_tx(const std::any& context, HTTPRequest* req, const std::string
     const NodeContext* const node = GetNodeContext(context, req);
     if (!node) return false;
     uint256 hashBlock = uint256();
-    const CTransactionRef tx = GetTransaction(/*block_index=*/nullptr, node->mempool.get(), hash, hashBlock, node->chainman->m_blockman);
+    const CTransactionRef tx = GetTransaction(/*block_index=*/nullptr, node->mempool.get(), hash, Params().GetConsensus(), hashBlock);
     if (!tx) {
         return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");
     }

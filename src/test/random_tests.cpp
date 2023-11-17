@@ -5,7 +5,6 @@
 #include <random.h>
 
 #include <test/util/setup_common.h>
-#include <util/time.h>
 
 #include <boost/test/unit_test.hpp>
 

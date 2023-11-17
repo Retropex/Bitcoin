@@ -11,12 +11,11 @@
 #include <chainparams.h>
 #include <chainparamsbase.h>
 #include <clientversion.h>
-#include <common/args.h>
-#include <common/system.h>
 #include <compat/compat.h>
 #include <core_io.h>
 #include <streams.h>
 #include <util/exception.h>
+#include <util/system.h>
 #include <util/translation.h>
 #include <version.h>
 
@@ -75,7 +74,7 @@ static int AppInitUtil(ArgsManager& args, int argc, char* argv[])
 
     // Check for chain settings (Params() calls are only valid after this clause)
     try {
-        SelectParams(args.GetChainType());
+        SelectParams(args.GetChainName());
     } catch (const std::exception& e) {
         tfm::format(std::cerr, "Error: %s\n", e.what());
         return EXIT_FAILURE;

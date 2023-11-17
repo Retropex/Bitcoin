@@ -412,7 +412,8 @@ void CoinControlDialog::updateLabels(CCoinControl& m_coin_control, WalletModel *
     unsigned int nQuantity      = 0;
     bool fWitness               = false;
 
-    auto vCoinControl{m_coin_control.ListSelected()};
+    std::vector<COutPoint> vCoinControl;
+    m_coin_control.ListSelected(vCoinControl);
 
     size_t i = 0;
     for (const auto& out : model->wallet().getCoins(vCoinControl)) {

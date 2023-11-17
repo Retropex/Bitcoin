@@ -3,7 +3,6 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <clientversion.h>
-#include <common/args.h>
 #include <consensus/amount.h>
 #include <key_io.h>
 #include <outputtype.h>
@@ -14,6 +13,7 @@
 #include <util/check.h>
 #include <util/strencodings.h>
 #include <util/string.h>
+#include <util/system.h>
 #include <util/translation.h>
 
 #include <tuple>
@@ -37,7 +37,7 @@ void RPCTypeCheckObj(const UniValue& o,
     bool fStrict)
 {
     for (const auto& t : typesExpected) {
-        const UniValue& v = o.find_value(t.first);
+        const UniValue& v = find_value(o, t.first);
         if (!fAllowNull && v.isNull())
             throw JSONRPCError(RPC_TYPE_ERROR, strprintf("Missing %s", t.first));
 
@@ -81,7 +81,7 @@ uint256 ParseHashV(const UniValue& v, std::string strName)
 }
 uint256 ParseHashO(const UniValue& o, std::string strKey)
 {
-    return ParseHashV(o.find_value(strKey), strKey);
+    return ParseHashV(find_value(o, strKey), strKey);
 }
 std::vector<unsigned char> ParseHexV(const UniValue& v, std::string strName)
 {
@@ -94,7 +94,7 @@ std::vector<unsigned char> ParseHexV(const UniValue& v, std::string strName)
 }
 std::vector<unsigned char> ParseHexO(const UniValue& o, std::string strKey)
 {
-    return ParseHexV(o.find_value(strKey), strKey);
+    return ParseHexV(find_value(o, strKey), strKey);
 }
 
 namespace {
@@ -1126,17 +1126,17 @@ std::pair<int64_t, int64_t> ParseDescriptorRange(const UniValue& value)
     return {low, high};
 }
 
-std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, FlatSigningProvider& provider, const bool expand_priv)
+std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, FlatSigningProvider& provider)
 {
     std::string desc_str;
     std::pair<int64_t, int64_t> range = {0, 1000};
     if (scanobject.isStr()) {
         desc_str = scanobject.get_str();
     } else if (scanobject.isObject()) {
-        const UniValue& desc_uni{scanobject.find_value("desc")};
+        UniValue desc_uni = find_value(scanobject, "desc");
         if (desc_uni.isNull()) throw JSONRPCError(RPC_INVALID_PARAMETER, "Descriptor needs to be provided in scan object");
         desc_str = desc_uni.get_str();
-        const UniValue& range_uni{scanobject.find_value("range")};
+        UniValue range_uni = find_value(scanobject, "range");
         if (!range_uni.isNull()) {
             range = ParseDescriptorRange(range_uni);
         }
@@ -1158,9 +1158,6 @@ std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, Fl
         std::vector<CScript> scripts;
         if (!desc->Expand(i, provider, scripts, provider)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Cannot derive script without private keys: '%s'", desc_str));
-        }
-        if (expand_priv) {
-            desc->ExpandPrivate(/*pos=*/i, provider, /*out=*/provider);
         }
         std::move(scripts.begin(), scripts.end(), std::back_inserter(ret));
     }

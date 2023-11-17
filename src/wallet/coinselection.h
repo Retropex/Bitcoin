@@ -11,9 +11,8 @@
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
 #include <random.h>
+#include <util/system.h>
 #include <util/check.h>
-#include <util/insert.h>
-#include <util/result.h>
 
 #include <optional>
 
@@ -409,24 +408,20 @@ public:
     int GetWeight() const { return m_weight; }
 };
 
-util::Result<SelectionResult> SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change,
-                                             int max_weight);
+std::optional<SelectionResult> SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change);
 
 /** Select coins by Single Random Draw. OutputGroups are selected randomly from the eligible
  * outputs until the target is satisfied
  *
  * @param[in]  utxo_pool    The positive effective value OutputGroups eligible for selection
  * @param[in]  target_value The target value to select for
- * @param[in]  rng The randomness source to shuffle coins
- * @param[in]  max_weight The maximum allowed weight for a selection result to be valid
- * @returns If successful, a valid SelectionResult, otherwise, util::Error
+ * @returns If successful, a SelectionResult, otherwise, std::nullopt
  */
-util::Result<SelectionResult> SelectCoinsSRD(const std::vector<OutputGroup>& utxo_pool, CAmount target_value, FastRandomContext& rng,
-                                             int max_weight);
+std::optional<SelectionResult> SelectCoinsSRD(const std::vector<OutputGroup>& utxo_pool, CAmount target_value, FastRandomContext& rng);
 
 // Original coin selection algorithm as a fallback
-util::Result<SelectionResult> KnapsackSolver(std::vector<OutputGroup>& groups, const CAmount& nTargetValue,
-                                             CAmount change_target, FastRandomContext& rng, int max_weight);
+std::optional<SelectionResult> KnapsackSolver(std::vector<OutputGroup>& groups, const CAmount& nTargetValue,
+                                              CAmount change_target, FastRandomContext& rng);
 } // namespace wallet
 
 #endif // BITCOIN_WALLET_COINSELECTION_H
