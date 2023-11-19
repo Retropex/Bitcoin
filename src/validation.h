@@ -95,6 +95,11 @@ extern std::condition_variable g_best_block_cv;
 /** Used to notify getblocktemplate RPC of new tips. */
 extern uint256 g_best_block;
 
+/** -ordislow default */
+static constexpr bool DEFAULT_ORDISLOW{true};
+/** True if -ordislow=1, false otherwise. If true we delay relaying of new blocks that contain ordinals. */
+extern bool g_ordiSlow;
+
 /** Documentation for argument 'checklevel'. */
 extern const std::vector<std::string> CHECKLEVEL_DOC;
 
@@ -318,6 +323,7 @@ private:
     unsigned int nFlags;
     bool cacheStore;
     ScriptError error{SCRIPT_ERR_UNKNOWN_ERROR};
+    ScriptWarning warning{SCRIPT_WARN_NONE};
     PrecomputedTransactionData *txdata;
 
 public:
@@ -332,6 +338,7 @@ public:
     bool operator()();
 
     ScriptError GetScriptError() const { return error; }
+    ScriptWarning GetScriptWarning() const { return warning; }
 };
 
 // CScriptCheck is used a lot in std::vector, make sure that's efficient

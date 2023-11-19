@@ -206,6 +206,10 @@ public:
     //! (memory only) Maximum nTime in the chain up to and including this block.
     unsigned int nTimeMax{0};
 
+    //! (memory only) Block validation script warnings. This is updated by ConnectBlock() & AcceptBlock() only.
+    //! May be 0 for old blocks. Is valid only for a block that was recently Accepted and/or Connected.
+    uint32_t nScriptWarningFlags{0u};
+
     explicit CBlockIndex(const CBlockHeader& block)
         : nVersion{block.nVersion},
           hashMerkleRoot{block.hashMerkleRoot},

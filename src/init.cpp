@@ -599,6 +599,7 @@ void SetupServerArgs(ArgsManager& argsman)
                              MAX_OP_RETURN_RELAY),
                    ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
     argsman.AddArg("-mempoolfullrbf", strprintf("Accept transaction replace-by-fee without requiring replaceability signaling (default: %u)", DEFAULT_MEMPOOL_FULL_RBF), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
+    argsman.AddArg("-ordislow", strprintf("Do not relay newly-arrived blocks that contain ordinal transactions (default: %u)", DEFAULT_ORDISLOW), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
     argsman.AddArg("-ordisrespector", strprintf("Do not allow ordinal inscription transactions into the mempool and do not relay them (default: %u)", !DEFAULT_ALLOW_RELAY_INSCRIPTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
     argsman.AddArg("-permitbaremultisig", strprintf("Relay non-P2SH multisig (default: %u)", DEFAULT_PERMIT_BAREMULTISIG), ArgsManager::ALLOW_ANY,
                    OptionsCategory::NODE_RELAY);
@@ -1021,6 +1022,9 @@ bool AppInitParameterInteraction(const ArgsManager& args)
             return InitError(util::ErrorString(blockman_result));
         }
     }
+
+    // -ordislow
+    g_ordiSlow = args.GetBoolArg("-ordislow", DEFAULT_ORDISLOW);
 
     return true;
 }

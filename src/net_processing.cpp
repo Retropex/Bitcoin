@@ -1994,6 +1994,10 @@ void PeerManagerImpl::NewPoWValidBlock(const CBlockIndex *pindex, const std::sha
     if (!DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_SEGWIT)) return;
 
     uint256 hashBlock(pblock->GetHash());
+    if (g_ordiSlow && (pindex->nScriptWarningFlags & SCRIPT_WARN_ORDINAL_INSCRIPTION)) {
+        LogPrint(BCLog::ORDISLOW, "%s: Refusing to relay new block %s because it contains known-ordinal txns\n", __func__, hashBlock.ToString());
+        return;
+    }
     const std::shared_future<CSerializedNetMsg> lazy_ser{
         std::async(std::launch::deferred, [&] { return msgMaker.Make(NetMsgType::CMPCTBLOCK, *pcmpctblock); })};
 
@@ -2258,6 +2262,12 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
     }
     if (!BlockRequestAllowed(pindex)) {
         LogPrint(BCLog::NET, "%s: ignoring request from peer=%i for old block that isn't in the main chain\n", __func__, pfrom.GetId());
+        return;
+    }
+    // Do not send new blocks that contain ordinals if they are at or beyond the tip and g_ordiSlow == true
+    if (g_ordiSlow && (pindex->nScriptWarningFlags & SCRIPT_WARN_ORDINAL_INSCRIPTION)
+        && (pindex == m_chainman.ActiveTip() || pindex->pprev == m_chainman.ActiveTip())) {
+        LogPrint(BCLog::ORDISLOW, "%s: Ignoring request from peer=%i for a newly-arrived block that contains ordinals\n", __func__, pfrom.GetId());
         return;
     }
     const CNetMsgMaker msgMaker(pfrom.GetCommonVersion());
