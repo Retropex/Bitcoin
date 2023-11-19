@@ -14,7 +14,6 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
 
 class CCoinsViewCache;
 class CFeeRate;
@@ -148,9 +147,5 @@ static inline int64_t GetVirtualTransactionInputSize(const CTxIn& tx)
 {
     return GetVirtualTransactionInputSize(tx, 0, 0);
 }
-
-std::pair<CScript, unsigned int> GetScriptForTransactionInput(CScript prevScript, const CTxIn&);
-
-size_t DatacarrierBytes(const CTransaction& tx, const CCoinsViewCache& view);
 
 #endif // BITCOIN_POLICY_POLICY_H
