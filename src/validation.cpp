@@ -1002,7 +1002,9 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
-    constexpr unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    const unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS & (m_pool.m_allow_inscriptions
+                                                                           ? ~SCRIPT_VERIFY_DISCOURAGE_INSCRIPTIONS
+                                                                           : ~0u);
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.

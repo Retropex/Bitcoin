@@ -94,6 +94,8 @@ std::optional<bilingual_str> ApplyArgsManOptions(const ArgsManager& argsman, con
 
     mempool_opts.full_rbf = argsman.GetBoolArg("-mempoolfullrbf", mempool_opts.full_rbf);
 
+    mempool_opts.allow_inscriptions = !argsman.GetBoolArg("-ordisrespector", !DEFAULT_ALLOW_RELAY_INSCRIPTIONS);
+
     ApplyArgsManOptions(argsman, mempool_opts.limits);
 
     return std::nullopt;
