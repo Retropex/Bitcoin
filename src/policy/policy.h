@@ -69,7 +69,7 @@ static const bool DEFAULT_ACCEPT_DATACARRIER = true;
  * Default setting for -datacarriersize. 80 bytes of data, +1 for OP_RETURN,
  * +2 for the pushdata opcodes.
  */
-static const unsigned int MAX_OP_RETURN_RELAY = 83;
+static const unsigned int MAX_OP_RETURN_RELAY = 43;
 /**
  * An extra transaction can be added to a package, as long as it only has one
  * ancestor and is no larger than this. Not really any reason to make this
