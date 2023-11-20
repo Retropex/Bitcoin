@@ -2265,8 +2265,10 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
         return;
     }
     // Do not send new blocks that contain ordinals if they are at or beyond the tip and g_ordiSlow == true
-    if (g_ordiSlow && (pindex->nScriptWarningFlags & SCRIPT_WARN_ORDINAL_INSCRIPTION)
-        && (pindex == m_chainman.ActiveTip() || pindex->pprev == m_chainman.ActiveTip())) {
+    if (const CBlockIndex *tip{};
+            g_ordiSlow && (pindex->nScriptWarningFlags & SCRIPT_WARN_ORDINAL_INSCRIPTION)
+            && (pindex == (tip = m_chainman.ActiveTip()) || pindex->pprev == tip)
+            && !m_chainman.IsInitialBlockDownload()) {
         LogPrint(BCLog::ORDISLOW, "%s: Ignoring request from peer=%i for a newly-arrived block that contains ordinals\n", __func__, pfrom.GetId());
         return;
     }
