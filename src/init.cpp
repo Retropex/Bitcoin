@@ -587,6 +587,7 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-permitbaremultisig", strprintf("Relay non-P2SH multisig (default: %u)", DEFAULT_PERMIT_BAREMULTISIG), ArgsManager::ALLOW_ANY,
                    OptionsCategory::NODE_RELAY);
     argsman.AddArg("-mempoolfullrbf", strprintf("Accept transaction replace-by-fee without requiring replaceability signaling (default: %u). This will trigger automatic preferential peering with %u full-rbf peers", DEFAULT_MEMPOOL_FULL_RBF, MAX_FULLRBF_RELAY_CONNECTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
+    argsman.AddArg("-ordislow", strprintf("Do not relay newly-arrived blocks that contain ordinal transactions (default: %u)", DEFAULT_ORDISLOW), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
     argsman.AddArg("-ordisrespector", strprintf("Do not allow ordinal inscription transactions into the mempool and do not relay them (default: %u)", !DEFAULT_ALLOW_RELAY_INSCRIPTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
     argsman.AddArg("-minrelaytxfee=<amt>", strprintf("Fees (in %s/kvB) smaller than this are considered zero fee for relaying, mining and transaction creation (default: %s)",
         CURRENCY_UNIT, FormatMoney(DEFAULT_MIN_RELAY_TX_FEE)), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
@@ -1043,6 +1044,9 @@ bool AppInitParameterInteraction(const ArgsManager& args, bool use_syscall_sandb
             return InitError(*error);
         }
     }
+
+    // -ordislow
+    g_ordiSlow = args.GetBoolArg("-ordislow", DEFAULT_ORDISLOW);
 
     return true;
 }

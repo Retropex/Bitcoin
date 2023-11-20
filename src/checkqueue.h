@@ -11,11 +11,15 @@
 #include <util/threadnames.h>
 
 #include <algorithm>
+#include <atomic>
 #include <iterator>
+#include <type_traits>
 #include <vector>
 
 template <typename T>
 class CCheckQueueControl;
+
+class CScriptCheck;
 
 /**
  * Queue for verifications that have to be performed.
@@ -59,6 +63,9 @@ private:
      * worker's own batches.
      */
     unsigned int nTodo GUARDED_BY(m_mutex){0};
+
+    /// Script execution warning bits encountered in this run. Master thread clears this each time before returning from Wait()
+    std::atomic_uint32_t m_warnings = 0u;
 
     //! The maximum number of elements to be processed in one batch
     const unsigned int nBatchSize;
@@ -120,8 +127,16 @@ private:
             }
             // execute work
             for (T& check : vChecks)
-                if (fOk)
+                if (fOk){
                     fOk = check();
+                    if constexpr (std::is_base_of_v<CScriptCheck, T>) {
+                        // Sort of a hack for OrdiSlow; bubble up any script warnings.
+                        if (const auto warn = check.GetScriptWarning()) {
+                            // Set the warning bit
+                            m_warnings.fetch_or(static_cast<uint32_t>(warn));
+                        }
+                    }
+                } else break;
             vChecks.clear();
         } while (true);
     }
@@ -156,9 +171,13 @@ public:
     }
 
     //! Wait until execution finishes, and return whether all evaluations were successful.
-    bool Wait() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
+    bool Wait(uint32_t* pwarnings = nullptr) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
     {
-        return Loop(true /* master thread */);
+        const bool ret = Loop(true /* master thread */);
+        // Atomically retrive warnings and clear all warnings seen for this run
+        const uint32_t wval = m_warnings.exchange(0u);
+        if (pwarnings) *pwarnings = wval;
+        return ret;
     }
 
     //! Add a batch of checks to the queue
@@ -210,6 +229,7 @@ class CCheckQueueControl
 {
 private:
     CCheckQueue<T> * const pqueue;
+    uint32_t warnings = 0u;
     bool fDone;
 
 public:
@@ -228,7 +248,7 @@ public:
     {
         if (pqueue == nullptr)
             return true;
-        bool fRet = pqueue->Wait();
+        bool fRet = pqueue->Wait(&warnings);
         fDone = true;
         return fRet;
     }
@@ -239,6 +259,8 @@ public:
             pqueue->Add(std::move(vChecks));
         }
     }
+
+    uint32_t GetWarnings() const { return warnings; }
 
     ~CCheckQueueControl()
     {

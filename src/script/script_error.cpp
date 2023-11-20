@@ -5,6 +5,9 @@
 
 #include <script/script_error.h>
 
+#include <crypto/common.h>
+
+#include <cassert>
 #include <string>
 
 std::string ScriptErrorString(const ScriptError serror)
@@ -122,4 +125,36 @@ std::string ScriptErrorString(const ScriptError serror)
         default: break;
     }
     return "unknown error";
+}
+
+std::string ScriptWarningString(const ScriptWarning warning)
+{
+    switch (warning) {
+        case SCRIPT_WARN_NONE:
+            return "No warning";
+        case SCRIPT_WARN_ORDINAL_INSCRIPTION:
+            return "Ordinal inscription detected";
+        default: break;
+    }
+    return "unknown warning";
+}
+
+std::string ScriptWarningStrings(uint32_t warning_flags)
+{
+    std::string ret;
+    bool seen_unknown = false;
+    while (warning_flags) {
+        const auto bit = CountBits(warning_flags);
+        assert(bit > 0 && bit <= 32);
+        const ScriptWarning w = static_cast<ScriptWarning>(1u << (bit-1u));
+        warning_flags &= ~w;
+        if (w >= SCRIPT_WARN_UNKNOWN) {
+            // ensure "unknown warning" appears at most once in the list
+            if (seen_unknown) continue;
+            seen_unknown = true;
+        }
+        if (!ret.empty()) ret += ",";
+        ret += ScriptWarningString(w);
+    }
+    return ret;
 }

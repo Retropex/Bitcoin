@@ -11,6 +11,7 @@
 #include <arith_uint256.h>
 #include <chain.h>
 #include <checkqueue.h>
+#include <common/bloom.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
@@ -1725,14 +1726,27 @@ void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, CTxUndo &txund
 bool CScriptCheck::operator()() {
     const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
     const CScriptWitness *witness = &ptxTo->vin[nIn].scriptWitness;
-    return VerifyScript(scriptSig, m_tx_out.scriptPubKey, witness, nFlags, CachingTransactionSignatureChecker(ptxTo, nIn, m_tx_out.nValue, cacheStore, *txdata), &error);
+    return VerifyScript(scriptSig, m_tx_out.scriptPubKey, witness, nFlags, CachingTransactionSignatureChecker(ptxTo, nIn, m_tx_out.nValue, cacheStore, *txdata), &error, &warning);
 }
 
 static CuckooCache::cache<uint256, SignatureCacheHasher> g_scriptExecutionCache;
 static CSHA256 g_scriptExecutionCacheHasher;
+// True if -ordislow=1
+bool g_ordiSlow{DEFAULT_ORDISLOW};
+// Txns known to contain ordinal inscriptions; indexed by wtxid. Mem usage is: 1.8 * 600,000 * 7 = ~7.56 MB
+// This is constructed and is only updated/checked if g_ordiSlow == true (-ordislow=1). !nullptr implies -> g_ordiSlow
+static std::unique_ptr<CRollingBloomFilter> g_knownOrdTxns GUARDED_BY(cs_main);
 
 bool InitScriptExecutionCache(size_t max_size_bytes)
 {
+    // Setup g_knownOrdTxns
+    {
+        LOCK(cs_main);
+        if (g_ordiSlow)
+            g_knownOrdTxns = std::make_unique<CRollingBloomFilter>(600'000u, 0.000'000'1);
+        else
+            g_knownOrdTxns.reset();
+    }
     // Setup the salted hasher
     uint256 nonce = GetRandHash();
     // We want the nonce to be 64 bytes long to force the hasher to process
@@ -1819,31 +1833,36 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
         CScriptCheck check(txdata.m_spent_outputs[i], tx, i, flags, cacheSigStore, &txdata);
         if (pvChecks) {
             pvChecks->emplace_back(std::move(check));
-        } else if (!check()) {
-            if (flags & STANDARD_NOT_MANDATORY_VERIFY_FLAGS) {
-                // Check whether the failure was caused by a
-                // non-mandatory script verification check, such as
-                // non-standard DER encodings or non-null dummy
-                // arguments; if so, ensure we return NOT_STANDARD
-                // instead of CONSENSUS to avoid downstream users
-                // splitting the network between upgraded and
-                // non-upgraded nodes by banning CONSENSUS-failing
-                // data providers.
-                CScriptCheck check2(txdata.m_spent_outputs[i], tx, i,
-                        flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
-                if (check2())
-                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, strprintf("non-mandatory-script-verify-flag (%s)", ScriptErrorString(check.GetScriptError())));
+        } else {
+            const bool ok = check();
+            if (g_knownOrdTxns && (check.GetScriptWarning() & SCRIPT_WARN_ORDINAL_INSCRIPTION))
+                g_knownOrdTxns->insert(tx.GetWitnessHash()); // remember this txn as containing ordinal inscriptions
+            if (!ok) {
+                if (flags & STANDARD_NOT_MANDATORY_VERIFY_FLAGS) {
+                    // Check whether the failure was caused by a
+                    // non-mandatory script verification check, such as
+                    // non-standard DER encodings or non-null dummy
+                    // arguments; if so, ensure we return NOT_STANDARD
+                    // instead of CONSENSUS to avoid downstream users
+                    // splitting the network between upgraded and
+                    // non-upgraded nodes by banning CONSENSUS-failing
+                    // data providers.
+                    CScriptCheck check2(txdata.m_spent_outputs[i], tx, i,
+                            flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
+                    if (check2())
+                        return state.Invalid(TxValidationResult::TX_NOT_STANDARD, strprintf("non-mandatory-script-verify-flag (%s)", ScriptErrorString(check.GetScriptError())));
+                }
+                // MANDATORY flag failures correspond to
+                // TxValidationResult::TX_CONSENSUS. Because CONSENSUS
+                // failures are the most serious case of validation
+                // failures, we may need to consider using
+                // RECENT_CONSENSUS_CHANGE for any script failure that
+                // could be due to non-upgraded nodes which we may want to
+                // support, to avoid splitting the network (but this
+                // depends on the details of how net_processing handles
+                // such errors).
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, strprintf("mandatory-script-verify-flag-failed (%s)", ScriptErrorString(check.GetScriptError())));
             }
-            // MANDATORY flag failures correspond to
-            // TxValidationResult::TX_CONSENSUS. Because CONSENSUS
-            // failures are the most serious case of validation
-            // failures, we may need to consider using
-            // RECENT_CONSENSUS_CHANGE for any script failure that
-            // could be due to non-upgraded nodes which we may want to
-            // support, to avoid splitting the network (but this
-            // depends on the details of how net_processing handles
-            // such errors).
-            return state.Invalid(TxValidationResult::TX_CONSENSUS, strprintf("mandatory-script-verify-flag-failed (%s)", ScriptErrorString(check.GetScriptError())));
         }
     }
 
@@ -1854,6 +1873,23 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
     }
 
     return true;
+}
+
+/**
+ * Returns true if any known ordinal txn exists in a block. A false return doesn't necessarily mean the
+ * block has no ordinals, just that we haven't previously seen any of the txns that do contain them.
+ * Will always return false if g_ordiSlow is false.
+ */
+static bool BlockContainsKnownOrdinalTxns(const CBlock& block) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+{
+    if (!g_knownOrdTxns) return false; // -ordislow=0
+    AssertLockHeld(cs_main);
+    const auto ntx = block.vtx.size();
+    for (size_t i = 1; i < ntx; ++i) {
+        if (g_knownOrdTxns->contains(block.vtx[i]->GetWitnessHash()))
+            return true;
+    }
+    return false;
 }
 
 bool AbortNode(BlockValidationState& state, const std::string& strMessage, const bilingual_str& userMessage)
@@ -2354,6 +2390,11 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         LogPrintf("ERROR: %s: CheckQueue failed\n", __func__);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "block-validation-failed");
     }
+    if (!fJustCheck && (pindex->nScriptWarningFlags |= control.GetWarnings())) {
+        LogPrintf("%s: block %s has the following warnings: %s\n", __func__,
+                  pindex->GetBlockHash().ToString(), ScriptWarningStrings(pindex->nScriptWarningFlags));
+    }
+
     const auto time_4{SteadyClock::now()};
     time_verify += time_4 - time_2;
     LogPrint(BCLog::BENCH, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1,
@@ -3985,9 +4026,15 @@ bool Chainstate::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockV
 
     // Header is valid/has work, merkle tree and segwit merkle tree are good...RELAY NOW
     // (but if it does not build on our best tip, let the SendMessages loop relay it)
-    if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev)
+    if (!IsInitialBlockDownload() && ActiveTip() == pindex->pprev) {
+        if (!(pindex->nScriptWarningFlags & SCRIPT_WARN_ORDINAL_INSCRIPTION) && BlockContainsKnownOrdinalTxns(block)) {
+            // For -ordislow=1: Update the ordinal inscription warning flag now from known
+            // (possibly rejected) ordinal txns already seen. This helps filter out sending
+            // of blocks before connecting them. Branch not taken if -ordislow=0.
+            pindex->nScriptWarningFlags |= SCRIPT_WARN_ORDINAL_INSCRIPTION;
+        }
         GetMainSignals().NewPoWValidBlock(pindex, pblock);
-
+    }
     // Write block to history file
     if (fNewBlock) *fNewBlock = true;
     try {

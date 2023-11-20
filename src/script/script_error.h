@@ -6,6 +6,7 @@
 #ifndef BITCOIN_SCRIPT_SCRIPT_ERROR_H
 #define BITCOIN_SCRIPT_SCRIPT_ERROR_H
 
+#include <cstdint>
 #include <string>
 
 typedef enum ScriptError_t
@@ -89,5 +90,18 @@ typedef enum ScriptError_t
 #define SCRIPT_ERR_LAST SCRIPT_ERR_ERROR_COUNT
 
 std::string ScriptErrorString(const ScriptError error);
+
+/// @brief Script warings, mainly used by the OrdiSlow subsystem
+/// Each of these should be a bit position.
+enum ScriptWarning : uint32_t {
+    SCRIPT_WARN_NONE = 0u,
+    SCRIPT_WARN_ORDINAL_INSCRIPTION = 1u << 0, // Txn contained an ordinal inscription
+
+    SCRIPT_WARN_UNKNOWN = 1u << 1,
+};
+
+std::string ScriptWarningString(ScriptWarning warning);
+/// Given a bitset of warning flags, prints a comma-delimited list of the warning strings.
+std::string ScriptWarningStrings(uint32_t warning_flags);
 
 #endif // BITCOIN_SCRIPT_SCRIPT_ERROR_H
