@@ -4026,7 +4026,7 @@ bool Chainstate::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockV
 
     // Header is valid/has work, merkle tree and segwit merkle tree are good...RELAY NOW
     // (but if it does not build on our best tip, let the SendMessages loop relay it)
-    if (!IsInitialBlockDownload() && ActiveTip() == pindex->pprev) {
+    if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev) {
         if (!(pindex->nScriptWarningFlags & SCRIPT_WARN_ORDINAL_INSCRIPTION) && BlockContainsKnownOrdinalTxns(block)) {
             // For -ordislow=1: Update the ordinal inscription warning flag now from known
             // (possibly rejected) ordinal txns already seen. This helps filter out sending
