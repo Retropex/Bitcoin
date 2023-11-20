@@ -4,7 +4,7 @@ List of modifications:
 
 - [Ordisrespector-V3](https://github.com/cculianu/bitcoin/commit/b37cd098d766d7ead4ae92fae0b73d9cd4469f1b)
 - Custom DNS seeds
-- Ordislow (soon)
+- Ordislow
 - automatic pairing with [fullrbf node](https://github.com/petertodd/bitcoin/tree/full-rbf-v25.0) (disabled by default)
 - `OP_RETURN` reduced to 40 bytes
 
