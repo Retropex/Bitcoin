@@ -107,6 +107,31 @@ Skip if not using the GUI or don't want QR code functionality.
 ``` bash
 brew install qrencode
 ```
+
+###### ImageMagick
+
+Software used to manipulate images within Bitcoin Knots.
+
+``` bash
+brew install imagemagick
+```
+
+###### png2icns
+
+Module used to convert .png files to .icns.
+
+``` bash
+brew install npm
+npm install png2icns -g
+```
+
+###### librsvg
+
+Library used for rendering .svg files.
+
+``` bash
+brew install librsvg
+```
 ---
 
 #### Port Mapping Dependencies
