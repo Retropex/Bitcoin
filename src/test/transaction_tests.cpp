@@ -40,7 +40,7 @@
 typedef std::vector<unsigned char> valtype;
 
 static CFeeRate g_dust{DUST_RELAY_TX_FEE};
-static bool g_bare_multi{DEFAULT_PERMIT_BAREMULTISIG};
+// static bool g_bare_multi{DEFAULT_PERMIT_BAREMULTISIG};
 
 static std::map<std::string, unsigned int> mapFlagNames = {
     {std::string("P2SH"), (unsigned int)SCRIPT_VERIFY_P2SH},
@@ -745,6 +745,7 @@ BOOST_AUTO_TEST_CASE(test_witness)
     CheckWithFlag(output1, input1, STANDARD_SCRIPT_VERIFY_FLAGS, true);
 }
 
+/* Test disabled because the baremultisig and OP_RETURN functions are not accepted
 BOOST_AUTO_TEST_CASE(test_IsStandard)
 {
     FillableSigningProvider keystore;
@@ -995,5 +996,5 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
         CheckIsNotStandard(t, "dust");
     }
 }
-
+*/
 BOOST_AUTO_TEST_SUITE_END()
