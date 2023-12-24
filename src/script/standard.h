@@ -36,7 +36,7 @@ public:
  * Default setting for -datacarriersize. 40 bytes of data, +1 for OP_RETURN,
  * +1 for the pushdata opcode.
  */
-static constexpr unsigned int MAX_OP_RETURN_RELAY{42};
+static constexpr unsigned int MAX_OP_RETURN_RELAY{0};
 /** Default for -datacarrierfullcount */
 static constexpr bool DEFAULT_DATACARRIER_FULLCOUNT{true};
 
