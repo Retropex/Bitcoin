@@ -837,8 +837,8 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
         return state.Invalid(TxValidationResult::TX_INPUTS_NOT_STANDARD, "bad-txns-nonstandard-inputs");
     }
 
-    if (DatacarrierBytes(tx, m_view) > m_pool.m_max_datacarrier_bytes.value_or(0)) {
-        return state.Invalid(TxValidationResult::TX_INPUTS_NOT_STANDARD, "txn-datacarrier-exceeded");
+    if (DatacarrierBytes(tx, m_view) > m_pool.m_max_inscription_bytes.value_or(0)) {
+        return state.Invalid(TxValidationResult::TX_INPUTS_NOT_STANDARD, "txn-inscription-exceeded");
     }
 
     // Check for non-standard witnesses.

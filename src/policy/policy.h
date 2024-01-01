@@ -66,6 +66,10 @@ static constexpr unsigned int DEFAULT_DESCENDANT_LIMIT{25};
 static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{101};
 /** Default for -datacarrier */
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
+/** Default for -relayinscription */
+static const bool DEFAULT_RELAY_INSCRIPTION = true;
+/** Default setting for -relayinscriptionsize */
+static const unsigned int MAX_INSCRIPTION_RELAY = MAX_BLOCK_SERIALIZED_SIZE;
 /**
  * Default setting for -datacarriersize. 80 bytes of data, +1 for OP_RETURN,
  * +2 for the pushdata opcodes.
