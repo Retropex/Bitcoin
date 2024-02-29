@@ -305,9 +305,6 @@ size_t CScript::DatacarrierBytes() const
         } else if (opcode == OP_ENDIF) {
             if (!inside_conditional) return size();  // invalid
             --inside_conditional;
-        } else if (opcode == OP_RETURN && !inside_conditional) {
-            // unconditional OP_RETURN is unspendable
-            return size();
         }
 
         // Match OP_FALSE OP_IF
