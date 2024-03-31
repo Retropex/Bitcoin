@@ -125,11 +125,25 @@ static const uint8_t dummydata[] = {0xeb,0x15,0x23,0x1d,0xfc,0xeb,0x60,0x92,0x58
 // Generate a dummy address with invalid CRC, starting with the network prefix.
 static std::string DummyAddress(const CChainParams &params)
 {
-    std::vector<unsigned char> sourcedata = params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
-    sourcedata.insert(sourcedata.end(), dummydata, dummydata + sizeof(dummydata));
-    for(int i=0; i<256; ++i) { // Try every trailing byte
-        std::string s = EncodeBase58(sourcedata);
-        if (!IsValidDestinationString(s)) {
+    std::string addr;
+    switch (params.GetChainType()) {
+    case ChainType::MAIN:
+        addr = "bc1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tq2jku9f";
+        break;
+    case ChainType::SIGNET:
+    case ChainType::TESTNET:
+    case ChainType::TESTNET4:
+        addr = "tb1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqa6qnlg";
+        break;
+    case ChainType::REGTEST:
+        addr = "bcrt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqsr2427";
+        break;
+    } // no default case, so the compiler can warn about missing cases
+    assert(!addr.empty());
+
+    if (Assume(!IsValidDestinationString(addr))) return addr;
+    return {};
+    if (!IsValidDestinationString(s)) {
             return s;
         }
         sourcedata[sourcedata.size()-1] += 1;

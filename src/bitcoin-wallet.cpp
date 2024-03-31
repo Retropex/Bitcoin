@@ -72,11 +72,9 @@ static std::optional<int> WalletAppInit(ArgsManager& args, int argc, char* argv[
                         "bitcoin-wallet is an offline tool for creating and interacting with " PACKAGE_NAME " wallet files.\n"
                 "\n"
                         "By default bitcoin-wallet will act on wallets in the default mainnet wallet directory in the datadir.\n"
-                "\n"
-                "To change the target wallet, use the -datadir, -wallet and -regtest / -signet / -testnet arguments.\n"
-                "\n"
-                "Usage: bitcoin-wallet [options] <command>\n"
-                "\n";
+                        "To change the target wallet, use the -datadir, -wallet and -regtest/-signet/-testnet/-testnet4 arguments.\n\n"
+                        "Usage:\n"
+                        "  bitcoin-wallet [options] <command>\n";
             strUsage += "\n" + args.GetHelpMessage();
         }
         tfm::format(std::cout, "%s", strUsage);
