@@ -87,6 +87,7 @@ public:
         incrementalrelayfee,
         mempoolexpiry,
         rejectunknownscripts,   // bool
+        rejectparasites,        // bool
         rejectspkreuse,         // bool
         minrelaytxfee,
         bytespersigop,
