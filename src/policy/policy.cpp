@@ -114,7 +114,7 @@ static inline bool MaybeReject_(std::string& out_reason, const std::string& reas
     }  \
 } while(0)
 
-bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_datacarrier_bytes, bool permit_bare_pubkey, bool permit_bare_multisig, const CFeeRate& dust_relay_fee, std::string& out_reason, const ignore_rejects_type& ignore_rejects)
+bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_datacarrier_bytes, bool permit_bare_pubkey, bool permit_bare_multisig, bool reject_parasites, const CFeeRate& dust_relay_fee, std::string& out_reason, const ignore_rejects_type& ignore_rejects)
 {
     const std::string reason_prefix;
 
@@ -129,6 +129,10 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
     unsigned int sz = GetTransactionWeight(tx);
     if (sz > MAX_STANDARD_TX_WEIGHT) {
         MaybeReject("tx-size");
+    }
+
+    if (tx.nLockTime == 21 && reject_parasites) {
+        MaybeReject("parasite-cat21");
     }
 
     for (const CTxIn& txin : tx.vin)
