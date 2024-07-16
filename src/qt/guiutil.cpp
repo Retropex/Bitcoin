@@ -143,6 +143,10 @@ static std::string DummyAddress(const CChainParams &params)
 
     if (Assume(!IsValidDestinationString(addr))) return addr;
     return {};
+    std::vector<unsigned char> sourcedata = params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
+    sourcedata.insert(sourcedata.end(), dummydata, dummydata + sizeof(dummydata));
+    for(int i=0; i<256; ++i) { // Try every trailing byte
+        std::string s = EncodeBase58(sourcedata);
     if (!IsValidDestinationString(s)) {
             return s;
         }
