@@ -108,11 +108,13 @@ util::Result<void> ApplyArgsManOptions(const ArgsManager& argsman, const CChainP
     }
 
     if (argsman.IsArgSet("-minrelaytxfee")) {
-        if (std::optional<CAmount> min_relay_feerate = ParseMoney(argsman.GetArg("-minrelaytxfee", ""))) {
-            // High fee check is done afterward in CWallet::Create()
-            mempool_opts.min_relay_feerate = CFeeRate{min_relay_feerate.value()};
-        } else {
-            return util::Error{AmountErrMsg("minrelaytxfee", argsman.GetArg("-minrelaytxfee", ""))};
+        if ((argsman.GetBoolArg("-checkaberrantvalue",DEFAULT_ABERRANT_VALUE) == false) || (argsman.GetBoolArg("-checkaberrantvalue",DEFAULT_ABERRANT_VALUE) && argsman.GetIntArg("-minrelaytxfee") > 1)) {
+            if (std::optional<CAmount> min_relay_feerate = ParseMoney(argsman.GetArg("-minrelaytxfee", ""))) {
+                // High fee check is done afterward in CWallet::Create()
+                mempool_opts.min_relay_feerate = CFeeRate{min_relay_feerate.value()};
+            } else {
+                return util::Error{AmountErrMsg("minrelaytxfee", argsman.GetArg("-minrelaytxfee", ""))};
+            }
         }
     } else if (mempool_opts.incremental_relay_feerate > mempool_opts.min_relay_feerate) {
         // Allow only setting incremental fee to control both
