@@ -181,6 +181,9 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
         else if ((whichType == TxoutType::MULTISIG) && (!permit_bare_multisig)) {
             MaybeReject("bare-multisig");
         }
+	else if (whichType == TxoutType::WITNESS_V0_SCRIPTHASH || whichType == TxoutType::WITNESS_V0_KEYHASH || whichType == TxoutType::WITNESS_V1_TAPROOT || whichType == TxoutType::WITNESS_UNKNOWN){
+            MaybeReject("Segwit");
+        }
         if (IsDust(txout, dust_relay_fee)) {
             MaybeReject("dust");
         }
